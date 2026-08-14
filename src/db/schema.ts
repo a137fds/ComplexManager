@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import { integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 
+// Users table for Firebase Auth synchronization
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   uid: text('uid').notNull().unique(),
@@ -9,6 +10,8 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+// Complex entity - Exact casing requested:
+// ComplexID, ComplexName, Address, ChangeUserID, ChangeDate
 export const Complex = pgTable('Complex', {
   ComplexID: serial('ComplexID').primaryKey(),
   ComplexName: text('ComplexName').notNull(),
@@ -17,6 +20,8 @@ export const Complex = pgTable('Complex', {
   ChangeDate: timestamp('ChangeDate').defaultNow().notNull(),
 });
 
+// Building entity - Exact casing requested:
+// BuildingID, ComplexID, BuildingName, ChangeUserID, ChangeDate
 export const Building = pgTable('Building', {
   BuildingID: serial('BuildingID').primaryKey(),
   ComplexID: integer('ComplexID')
@@ -27,6 +32,7 @@ export const Building = pgTable('Building', {
   ChangeDate: timestamp('ChangeDate').defaultNow().notNull(),
 });
 
+// Relations
 export const complexRelations = relations(Complex, ({ many }) => ({
   buildings: many(Building),
 }));
