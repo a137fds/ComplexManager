@@ -1,29 +1,7 @@
-import React, { useState } from 'react';
-import {
-  ComplexInfo,
-  Building,
-  Resident,
-  AnnualCharge,
-  Invoice,
-  Payment,
-  TaskItem,
-  DocumentItem,
-  AuditLog,
-  UserRole,
-  Language
-} from './types';
-import {
-  initialComplexInfo,
-  initialBuildings,
-  initialResidents,
-  initialAnnualCharges,
-  initialInvoices,
-  initialPayments,
-  initialTasks,
-  initialDocuments,
-  initialAuditLogs
-} from './data/initialData';
-
+import React, { useEffect, useState } from 'react';
+import { ComplexInfo, Building, Resident, AnnualCharge, Invoice, Payment, TaskItem, DocumentItem, AuditLog, UserRole, Language } from './types';
+import { ComplexEntity, BuildingEntity, databaseApi } from './api/databaseApi';
+import { initialComplexInfo, initialBuildings, initialResidents, initialAnnualCharges, initialInvoices, initialPayments, initialTasks, initialDocuments, initialAuditLogs } from './data/initialData';
 import { Header } from './components/Header';
 import { Sidebar, TabType } from './components/Sidebar';
 import { CloudSqlCrudView } from './components/CloudSqlCrudView';
@@ -38,7 +16,6 @@ import { GuestLandingView } from './components/GuestLandingView';
 import { InvoiceModal } from './components/InvoiceModal';
 
 export const App: React.FC = () => {
-  // Application Data State
   const [complex, setComplex] = useState<ComplexInfo>(initialComplexInfo);
   const [buildings, setBuildings] = useState<Building[]>(initialBuildings);
   const [residents, setResidents] = useState<Resident[]>(initialResidents);
@@ -49,391 +26,142 @@ export const App: React.FC = () => {
   const [documents, setDocuments] = useState<DocumentItem[]>(initialDocuments);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(initialAuditLogs);
 
-  // Active Session & View State
+  const [complexes, setComplexes] = useState<ComplexEntity[]>([]);
+  const [dbBuildings, setDbBuildings] = useState<BuildingEntity[]>([]);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [selectedComplexId, setSelectedComplexId] = useState<number | null>(null);
+  const [selectedComplexFilter, setSelectedComplexFilter] = useState<number | 'all'>('all');
+
   const [currentRole, setCurrentRole] = useState<UserRole>('admin');
   const [currentLang, setCurrentLang] = useState<Language>('en');
   const [currentTab, setCurrentTab] = useState<TabType>('database_crud');
-
-  // Modal State
   const [activeInvoiceModal, setActiveInvoiceModal] = useState<Invoice | null>(null);
 
-  // Helper to log audit actions
+  const refreshDatabaseData = async () => {
+    setDbLoading(true);
+    try {
+      const [loadedComplexes, loadedBuildings] = await Promise.all([databaseApi.getComplexes(), databaseApi.getBuildings()]);
+      setComplexes(loadedComplexes);
+      setDbBuildings(loadedBuildings);
+      setSelectedComplexId(current => current && loadedComplexes.some(c => c.ComplexID === current) ? current : loadedComplexes[0]?.ComplexID ?? null);
+    } catch (error) {
+      console.error('Failed to load PostgreSQL Complex/Building data:', error);
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  useEffect(() => { void refreshDatabaseData(); }, []);
+
   const addAuditLog = (action: string, targetType: string, targetId: string, details: string) => {
     const newLog: AuditLog = {
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
       userRole: currentRole,
-      userName: currentRole === 'management_company'
-        ? 'Alanya Site Management Ltd.'
-        : currentRole === 'financial_controller'
-        ? 'Ahmet Çelik (Controller)'
-        : currentRole === 'chairman'
-        ? 'Mehmet Demir (Chairman)'
-        : currentRole.replace('_', ' ').toUpperCase(),
-      action,
-      targetType,
-      targetId,
-      details
+      userName: currentRole === 'management_company' ? 'Alanya Site Management Ltd.' : currentRole === 'financial_controller' ? 'Ahmet Çelik (Controller)' : currentRole === 'chairman' ? 'Mehmet Demir (Chairman)' : currentRole.replace('_', ' ').toUpperCase(),
+      action, targetType, targetId, details
     };
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  // Role switch handler
   const handleRoleChange = (newRole: UserRole) => {
     setCurrentRole(newRole);
-    if (newRole === 'guest') {
-      setCurrentTab('guest_overview');
-    } else if (newRole === 'resident' && currentTab === 'administration') {
-      setCurrentTab('residents');
-    } else if (newRole === 'site_staff' && (currentTab === 'billing' || currentTab === 'administration')) {
-      setCurrentTab('tasks');
-    }
+    if (newRole === 'guest') setCurrentTab('guest_overview');
+    else if (newRole === 'resident' && currentTab === 'administration') setCurrentTab('residents');
+    else if (newRole === 'site_staff' && (currentTab === 'billing' || currentTab === 'administration')) setCurrentTab('tasks');
   };
 
-  // Complex update handler
-  const handleUpdateComplex = (updated: ComplexInfo) => {
-    setComplex(updated);
-    addAuditLog('UPDATE_COMPLEX_INFO', 'complex', updated.id, `Updated legal & banking registry for ${updated.name}`);
+  const handleCreateComplex = async (data: { ComplexName: string; Address: string; ChangeUserID?: string }) => {
+    const created = await databaseApi.createComplex(data);
+    setComplexes(prev => [created, ...prev]);
+    setSelectedComplexId(created.ComplexID);
+    addAuditLog('CREATE_COMPLEX', 'complex', String(created.ComplexID), `Created complex ${created.ComplexName}`);
   };
 
-  // Buildings handler
-  const handleUpdateBuilding = (updated: Building) => {
-    setBuildings(prev => prev.map(b => b.id === updated.id ? updated : b));
-    addAuditLog('UPDATE_BUILDING', 'building', updated.id, `Updated specifications for ${updated.blockCode}`);
+  const handleUpdateComplexDb = async (id: number, data: { ComplexName: string; Address: string; ChangeUserID?: string }) => {
+    const updated = await databaseApi.updateComplex(id, data);
+    setComplexes(prev => prev.map(item => item.ComplexID === id ? updated : item));
+    addAuditLog('UPDATE_COMPLEX', 'complex', String(id), `Updated complex ${updated.ComplexName}`);
   };
 
-  const handleAddBuilding = (created: Building) => {
-    setBuildings(prev => [...prev, created]);
-    addAuditLog('CREATE_BUILDING', 'building', created.id, `Added new building block ${created.blockCode} (${created.name})`);
+  const handleDeleteComplex = async (id: number) => {
+    await databaseApi.deleteComplex(id);
+    setComplexes(prev => prev.filter(item => item.ComplexID !== id));
+    setDbBuildings(prev => prev.filter(item => item.ComplexID !== id));
+    setSelectedComplexId(current => current === id ? null : current);
+    addAuditLog('DELETE_COMPLEX', 'complex', String(id), `Deleted complex ${id}`);
   };
 
-  // Billing Handlers (SPEC 6.1 & 6.2)
+  const handleCreateBuilding = async (data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => {
+    const created = await databaseApi.createBuilding(data);
+    setDbBuildings(prev => [created, ...prev]);
+    addAuditLog('CREATE_BUILDING', 'building', String(created.BuildingID), `Created building ${created.BuildingName}`);
+  };
+
+  const handleUpdateBuildingDb = async (id: number, data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => {
+    const updated = await databaseApi.updateBuilding(id, data);
+    setDbBuildings(prev => prev.map(item => item.BuildingID === id ? updated : item));
+    addAuditLog('UPDATE_BUILDING', 'building', String(id), `Updated building ${updated.BuildingName}`);
+  };
+
+  const handleDeleteBuilding = async (id: number) => {
+    await databaseApi.deleteBuilding(id);
+    setDbBuildings(prev => prev.filter(item => item.BuildingID !== id));
+    addAuditLog('DELETE_BUILDING', 'building', String(id), `Deleted building ${id}`);
+  };
+
+  const handleUpdateComplex = (updated: ComplexInfo) => { setComplex(updated); addAuditLog('UPDATE_COMPLEX_INFO', 'complex', updated.id, `Updated legal & banking registry for ${updated.name}`); };
+  const handleUpdateBuilding = (updated: Building) => { setBuildings(prev => prev.map(b => b.id === updated.id ? updated : b)); addAuditLog('UPDATE_BUILDING', 'building', updated.id, `Updated specifications for ${updated.blockCode}`); };
+  const handleAddBuilding = (created: Building) => { setBuildings(prev => [...prev, created]); addAuditLog('CREATE_BUILDING', 'building', created.id, `Added new building block ${created.blockCode} (${created.name})`); };
+
   const handleDefineAnnualCharge = (chargeData: Partial<AnnualCharge>) => {
-    const created: AnnualCharge = {
-      id: `chg-${Date.now()}`,
-      year: chargeData.year || 2027,
-      amount: chargeData.amount || 1500,
-      currency: 'EUR',
-      title: chargeData.title || `${chargeData.year} General Maintenance Dues`,
-      description: chargeData.description || 'Approved annual budget dues.',
-      createdAt: new Date().toISOString().split('T')[0],
-      createdBy: currentRole === 'management_company' ? 'Alanya Site Management Ltd.' : 'Board Administration',
-      status: 'draft'
-    };
-
+    const created: AnnualCharge = { id: `chg-${Date.now()}`, year: chargeData.year || 2027, amount: chargeData.amount || 1500, currency: 'EUR', title: chargeData.title || `${chargeData.year} General Maintenance Dues`, description: chargeData.description || 'Approved annual budget dues.', createdAt: new Date().toISOString().split('T')[0], createdBy: currentRole === 'management_company' ? 'Alanya Site Management Ltd.' : 'Board Administration', status: 'draft' };
     setAnnualCharges(prev => [created, ...prev]);
     addAuditLog('DEFINE_ANNUAL_CHARGE', 'annual_charge', created.id, `Defined annual charge for Year ${created.year}: €${created.amount}`);
   };
 
-  // Send to All: generates individual invoices for all residents, updates resident debt balances, archives records
   const handleSendToAll = (chargeId: string) => {
-    const charge = annualCharges.find(c => c.id === chargeId);
-    if (!charge) return;
-
-    const newInvoices: Invoice[] = residents.map((resident, idx) => {
-      const invNum = `INV-${charge.year}-${resident.unitNumber.replace('-', '')}`;
-      return {
-        id: `inv-${Date.now()}-${idx}`,
-        invoiceNumber: invNum,
-        chargeId: charge.id,
-        residentId: resident.id,
-        unitNumber: resident.unitNumber,
-        blockCode: resident.blockCode,
-        residentName: `${resident.firstName} ${resident.lastName}`,
-        year: charge.year,
-        amount: charge.amount,
-        paidAmount: 0,
-        currency: 'EUR',
-        status: 'unpaid',
-        issueDate: new Date().toISOString().split('T')[0],
-        dueDate: `${charge.year}-03-31`,
-        title: charge.title,
-        description: charge.description,
-        pdfGenerated: true,
-        pdfGeneratedDocName: `Aidat_${charge.year}_Unit_${resident.unitNumber}.pdf`,
-        lineItems: [
-          {
-            description: `Annual Complex Maintenance Dues (Aidat) - Year ${charge.year}`,
-            amount: charge.amount
-          }
-        ]
-      };
-    });
-
-    // Update invoices
+    const charge = annualCharges.find(c => c.id === chargeId); if (!charge) return;
+    const newInvoices: Invoice[] = residents.map((resident, idx) => ({ id: `inv-${Date.now()}-${idx}`, invoiceNumber: `INV-${charge.year}-${resident.unitNumber.replace('-', '')}`, chargeId: charge.id, residentId: resident.id, unitNumber: resident.unitNumber, blockCode: resident.blockCode, residentName: `${resident.firstName} ${resident.lastName}`, year: charge.year, amount: charge.amount, paidAmount: 0, currency: 'EUR', status: 'unpaid', issueDate: new Date().toISOString().split('T')[0], dueDate: `${charge.year}-03-31`, title: charge.title, description: charge.description, pdfGenerated: true, pdfGeneratedDocName: `Aidat_${charge.year}_Unit_${resident.unitNumber}.pdf`, lineItems: [{ description: `Annual Complex Maintenance Dues (Aidat) - Year ${charge.year}`, amount: charge.amount }] }));
     setInvoices(prev => [...newInvoices, ...prev]);
-
-    // Update resident debt balances
-    setResidents(prev =>
-      prev.map(r => ({
-        ...r,
-        totalCharged: r.totalCharged + charge.amount,
-        outstandingBalance: r.outstandingBalance + charge.amount
-      }))
-    );
-
-    addAuditLog(
-      'SEND_TO_ALL_RESIDENTS',
-      'annual_charge',
-      charge.id,
-      `Generated and distributed ${newInvoices.length} individual invoices of €${charge.amount} for Year ${charge.year}`
-    );
+    setResidents(prev => prev.map(r => ({ ...r, totalCharged: r.totalCharged + charge.amount, outstandingBalance: r.outstandingBalance + charge.amount })));
+    addAuditLog('SEND_TO_ALL_RESIDENTS', 'annual_charge', charge.id, `Generated and distributed ${newInvoices.length} individual invoices of €${charge.amount} for Year ${charge.year}`);
   };
 
-  // Payment Recording
   const handleRecordPayment = (paymentData: Partial<Payment>) => {
     if (!paymentData.residentId || !paymentData.amount) return;
-
-    const createdPayment: Payment = {
-      id: `pay-${Date.now()}`,
-      invoiceId: paymentData.invoiceId || 'inv-batch',
-      residentId: paymentData.residentId,
-      unitNumber: paymentData.unitNumber || '',
-      amount: Number(paymentData.amount),
-      currency: 'EUR',
-      paymentDate: paymentData.paymentDate || new Date().toISOString().split('T')[0],
-      method: paymentData.method || 'bank_transfer',
-      referenceNo: paymentData.referenceNo || 'TXN-' + Math.floor(100000 + Math.random() * 900000),
-      verifiedBy: currentRole === 'management_company' ? 'Alanya Site Management Ltd.' : 'Admin Office',
-      receiptNumber: `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      payerName: paymentData.payerName || 'Resident'
-    };
-
+    const createdPayment: Payment = { id: `pay-${Date.now()}`, invoiceId: paymentData.invoiceId || 'inv-batch', residentId: paymentData.residentId, unitNumber: paymentData.unitNumber || '', amount: Number(paymentData.amount), currency: 'EUR', paymentDate: paymentData.paymentDate || new Date().toISOString().split('T')[0], method: paymentData.method || 'bank_transfer', referenceNo: paymentData.referenceNo || 'TXN-' + Math.floor(100000 + Math.random() * 900000), verifiedBy: currentRole === 'management_company' ? 'Alanya Site Management Ltd.' : 'Admin Office', receiptNumber: `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`, payerName: paymentData.payerName || 'Resident' };
     setPayments(prev => [createdPayment, ...prev]);
-
-    // Update resident financial balances
-    setResidents(prev =>
-      prev.map(res => {
-        if (res.id === createdPayment.residentId) {
-          const newTotalPaid = res.totalPaid + createdPayment.amount;
-          const newBalance = Math.max(0, res.totalCharged - newTotalPaid);
-          return {
-            ...res,
-            totalPaid: newTotalPaid,
-            outstandingBalance: newBalance
-          };
-        }
-        return res;
-      })
-    );
-
-    // Update unpaid invoice status for this resident
-    setInvoices(prev =>
-      prev.map(inv => {
-        if (inv.residentId === createdPayment.residentId && inv.status !== 'paid') {
-          return {
-            ...inv,
-            status: 'paid'
-          };
-        }
-        return inv;
-      })
-    );
-
-    addAuditLog(
-      'RECORD_PAYMENT',
-      'payment',
-      createdPayment.id,
-      `Recorded payment of €${createdPayment.amount} from Unit ${createdPayment.unitNumber} (${createdPayment.referenceNo})`
-    );
+    setResidents(prev => prev.map(res => res.id === createdPayment.residentId ? { ...res, totalPaid: res.totalPaid + createdPayment.amount, outstandingBalance: Math.max(0, res.totalCharged - (res.totalPaid + createdPayment.amount)) } : res));
+    setInvoices(prev => prev.map(inv => inv.residentId === createdPayment.residentId && inv.status !== 'paid' ? { ...inv, status: 'paid' } : inv));
+    addAuditLog('RECORD_PAYMENT', 'payment', createdPayment.id, `Recorded payment of €${createdPayment.amount} from Unit ${createdPayment.unitNumber} (${createdPayment.referenceNo})`);
   };
 
-  // Tasks & Tenders Handlers
-  const handleAddTask = (task: TaskItem) => {
-    setTasks(prev => [task, ...prev]);
-    addAuditLog('CREATE_TASK', 'task', task.id, `Created task: ${task.title} (Requires tender: ${task.requiresTender})`);
-  };
-
-  const handleUpdateTask = (updated: TaskItem) => {
-    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-    addAuditLog('UPDATE_TASK_WORKFLOW', 'task', updated.id, `Updated task ${updated.title} status to ${updated.status}`);
-  };
-
-  // Documents Handlers (SPEC 3.2 Soft-Delete)
-  const handleUploadDocument = (doc: DocumentItem) => {
-    setDocuments(prev => [doc, ...prev]);
-    addAuditLog('UPLOAD_DOCUMENT', 'document', doc.id, `Uploaded document: ${doc.title} (${doc.category})`);
-  };
-
-  const handleSoftDeleteDocument = (docId: string) => {
-    setDocuments(prev =>
-      prev.map(d => {
-        if (d.id === docId) {
-          return {
-            ...d,
-            isSoftDeleted: true,
-            deletedAt: new Date().toISOString().split('T')[0],
-            deletedByRole: currentRole,
-            deletedByName: currentRole === 'management_company'
-              ? 'Alanya Site Management Ltd. (Operator)'
-              : currentRole.replace('_', ' ').toUpperCase()
-          };
-        }
-        return d;
-      })
-    );
-    addAuditLog(
-      'SOFT_DELETE_DOCUMENT',
-      'document',
-      docId,
-      `Marked document for deletion by ${currentRole} (Archived for Admin review)`
-    );
-  };
-
-  const handleRestoreDocument = (docId: string) => {
-    setDocuments(prev =>
-      prev.map(d => {
-        if (d.id === docId) {
-          return {
-            ...d,
-            isSoftDeleted: false,
-            deletedAt: undefined,
-            deletedByRole: undefined,
-            deletedByName: undefined
-          };
-        }
-        return d;
-      })
-    );
-    addAuditLog('RESTORE_DOCUMENT', 'document', docId, `Admin restored document back to active repository`);
-  };
-
-  const handlePermanentDeleteDocument = (docId: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== docId));
-    addAuditLog('PERMANENT_PURGE_DOCUMENT', 'document', docId, `Admin permanently purged document from database`);
-  };
+  const handleAddTask = (task: TaskItem) => { setTasks(prev => [task, ...prev]); addAuditLog('CREATE_TASK', 'task', task.id, `Created task: ${task.title} (Requires tender: ${task.requiresTender})`); };
+  const handleUpdateTask = (updated: TaskItem) => { setTasks(prev => prev.map(t => t.id === updated.id ? updated : t)); addAuditLog('UPDATE_TASK_WORKFLOW', 'task', updated.id, `Updated task ${updated.title} status to ${updated.status}`); };
+  const handleUploadDocument = (doc: DocumentItem) => { setDocuments(prev => [doc, ...prev]); addAuditLog('UPLOAD_DOCUMENT', 'document', doc.id, `Uploaded document: ${doc.title} (${doc.category})`); };
+  const handleSoftDeleteDocument = (docId: string) => { setDocuments(prev => prev.map(d => d.id === docId ? { ...d, isSoftDeleted: true, deletedAt: new Date().toISOString().split('T')[0], deletedByRole: currentRole, deletedByName: currentRole === 'management_company' ? 'Alanya Site Management Ltd. (Operator)' : currentRole.replace('_', ' ').toUpperCase() } : d)); addAuditLog('SOFT_DELETE_DOCUMENT', 'document', docId, `Marked document for deletion by ${currentRole} (Archived for Admin review)`); };
+  const handleRestoreDocument = (docId: string) => { setDocuments(prev => prev.map(d => d.id === docId ? { ...d, isSoftDeleted: false, deletedAt: undefined, deletedByRole: undefined, deletedByName: undefined } : d)); addAuditLog('RESTORE_DOCUMENT', 'document', docId, 'Admin restored document back to active repository'); };
+  const handlePermanentDeleteDocument = (docId: string) => { setDocuments(prev => prev.filter(d => d.id !== docId)); addAuditLog('PERMANENT_PURGE_DOCUMENT', 'document', docId, 'Admin permanently purged document from database'); };
 
   const pendingAuditsCount = tasks.filter(t => t.financialAudit.status === 'pending').length;
 
-  return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col antialiased selection:bg-teal-600 selection:text-white">
-      
-      {/* Universal Header */}
-      <Header
-        complex={complex}
-        currentRole={currentRole}
-        onRoleChange={handleRoleChange}
-        currentLang={currentLang}
-        onLangChange={setCurrentLang}
-        pendingAuditsCount={pendingAuditsCount}
-      />
-
-      {/* Main Layout Area */}
-      <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
-        
-        {/* Navigation Sidebar */}
-        <Sidebar
-          currentTab={currentTab}
-          onTabSelect={setCurrentTab}
-          currentRole={currentRole}
-          currentLang={currentLang}
-        />
-
-        {/* Content View Container */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {currentTab === 'database_crud' && (
-            <CloudSqlCrudView
-              currentLang={currentLang}
-              onAuditLog={addAuditLog}
-            />
-          )}
-
-          {currentTab === 'complex' && (
-            <ComplexView
-              complex={complex}
-              onUpdateComplex={handleUpdateComplex}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'buildings' && (
-            <BuildingsView
-              buildings={buildings}
-              onUpdateBuilding={handleUpdateBuilding}
-              onAddBuilding={handleAddBuilding}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'residents' && (
-            <ResidentsView
-              residents={residents}
-              invoices={invoices}
-              payments={payments}
-              onRecordPayment={handleRecordPayment}
-              onOpenInvoiceModal={(inv) => setActiveInvoiceModal(inv)}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'billing' && (
-            <BillingView
-              annualCharges={annualCharges}
-              invoices={invoices}
-              payments={payments}
-              residents={residents}
-              onDefineAnnualCharge={handleDefineAnnualCharge}
-              onSendToAll={handleSendToAll}
-              onOpenInvoiceModal={(inv) => setActiveInvoiceModal(inv)}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'tasks' && (
-            <TasksView
-              tasks={tasks}
-              onAddTask={handleAddTask}
-              onUpdateTask={handleUpdateTask}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'documents' && (
-            <DocumentsView
-              documents={documents}
-              onUploadDocument={handleUploadDocument}
-              onSoftDeleteDocument={handleSoftDeleteDocument}
-              onRestoreDocument={handleRestoreDocument}
-              onPermanentDeleteDocument={handlePermanentDeleteDocument}
-              currentRole={currentRole}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'administration' && (
-            <AdministrationView
-              auditLogs={auditLogs}
-              currentRole={currentRole}
-              onRoleChange={handleRoleChange}
-              currentLang={currentLang}
-            />
-          )}
-
-          {currentTab === 'guest_overview' && (
-            <GuestLandingView
-              complex={complex}
-              currentLang={currentLang}
-              onExploreClick={() => setCurrentTab('complex')}
-            />
-          )}
-        </main>
-      </div>
-
-      {/* Official Printable Invoice Modal */}
-      {activeInvoiceModal && (
-        <InvoiceModal
-          invoice={activeInvoiceModal}
-          complex={complex}
-          onClose={() => setActiveInvoiceModal(null)}
-          currentLang={currentLang}
-        />
-      )}
-
+  return <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col antialiased selection:bg-teal-600 selection:text-white">
+    <Header complex={complex} currentRole={currentRole} onRoleChange={handleRoleChange} currentLang={currentLang} onLangChange={setCurrentLang} pendingAuditsCount={pendingAuditsCount} />
+    <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
+      <Sidebar currentTab={currentTab} onTabSelect={setCurrentTab} currentRole={currentRole} currentLang={currentLang} />
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {currentTab === 'database_crud' && <CloudSqlCrudView currentLang={currentLang} onAuditLog={addAuditLog} />}
+        {currentTab === 'complex' && <ComplexView complexes={complexes} selectedComplexId={selectedComplexId} onSelectComplex={setSelectedComplexId} onCreateComplex={handleCreateComplex} onUpdateComplex={handleUpdateComplexDb} onDeleteComplex={handleDeleteComplex} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} buildings={dbBuildings} onNavigateToBuildings={(complexId) => { if (complexId !== undefined) setSelectedComplexFilter(complexId); setCurrentTab('buildings'); }} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'buildings' && <BuildingsView buildings={dbBuildings} complexes={complexes} selectedComplexFilter={selectedComplexFilter} onSelectComplexFilter={setSelectedComplexFilter} onCreateBuilding={handleCreateBuilding} onUpdateBuilding={handleUpdateBuildingDb} onDeleteBuilding={handleDeleteBuilding} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'residents' && <ResidentsView residents={residents} invoices={invoices} payments={payments} onRecordPayment={handleRecordPayment} onOpenInvoiceModal={inv => setActiveInvoiceModal(inv)} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'billing' && <BillingView annualCharges={annualCharges} invoices={invoices} payments={payments} residents={residents} onDefineAnnualCharge={handleDefineAnnualCharge} onSendToAll={handleSendToAll} onOpenInvoiceModal={inv => setActiveInvoiceModal(inv)} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'tasks' && <TasksView tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'documents' && <DocumentsView documents={documents} onUploadDocument={handleUploadDocument} onSoftDeleteDocument={handleSoftDeleteDocument} onRestoreDocument={handleRestoreDocument} onPermanentDeleteDocument={handlePermanentDeleteDocument} currentRole={currentRole} currentLang={currentLang} />}
+        {currentTab === 'administration' && <AdministrationView auditLogs={auditLogs} currentRole={currentRole} onRoleChange={handleRoleChange} currentLang={currentLang} />}
+        {currentTab === 'guest_overview' && <GuestLandingView complex={complex} currentLang={currentLang} onExploreClick={() => setCurrentTab('complex')} />}
+      </main>
     </div>
-  );
+    {activeInvoiceModal && <InvoiceModal invoice={activeInvoiceModal} complex={complex} onClose={() => setActiveInvoiceModal(null)} currentLang={currentLang} />}
+  </div>;
 };
