@@ -1,4 +1,8 @@
 {
   "name": "ComplexManager",
-  "description": "Residential complex management application"
+  "description": "Multilingual residential complex (site) management application for Türkiye featuring role-based access control (Admin, Management Company, Chairman, Board, Financial Controller, Site Staff, Residents, Guests), annual charges & invoice generation, tasks with tender workflow and financial checklists, and document soft-deletion governance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
