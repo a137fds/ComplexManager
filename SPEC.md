@@ -17,50 +17,40 @@ The system is designed for the residential complex itself. A management company 
 ## 3. Roles
 
 ### 3.1 Admin
-
 Full access to all system functionality and data.
 
 ### 3.2 Management Company
-
 The management company operates the complex within the permissions assigned to this role.
 
 The Management Company cannot permanently delete documents. When it uses the delete action for a document, the document is marked as deleted instead of being physically removed.
 
 Deleted documents:
-
 - are hidden from the Management Company;
 - are hidden from all other roles except Admin;
 - remain visible to Admin as deleted items;
 - must retain information that they were marked for deletion by the Management Company.
 
 ### 3.3 Chairman
-
 Chairman of the complex board.
 
 ### 3.4 Board Member
-
 Member of the complex board.
 
 ### 3.5 Financial Controller
-
 Responsible for financial control functions assigned by the system permissions.
 
 ### 3.6 Site Staff
-
 Operational staff member of the residential complex, including the Turkish site caretaker/staff member (kapıcı).
 
 ### 3.7 User
-
 A resident of the residential complex.
 
 ### 3.8 Guest
-
 An unauthenticated visitor of the website.
 
 Guest is a real permission role. The system must support assigning explicit permissions to the Guest role, even though a guest does not authenticate.
 
 For example, Guest may have permissions such as:
-
 - View the public home page.
 - View general complex photos.
 
@@ -68,10 +58,9 @@ The exact Guest permissions will be defined later.
 
 ## 4. Localization and Multilingual Support
 
-The application must be designed as a multilingual system from the beginning. Internationalization and localization must be part of the initial architecture rather than added later as a separate feature.
+The application must be designed as a multilingual system from the beginning. Internationalization and localization must be part of the initial architecture rather than added later.
 
 The system must support the following languages at launch:
-
 - Russian
 - English
 - French
@@ -104,8 +93,7 @@ The application should use a conventional management-dashboard layout consisting
 2. A left-side navigation menu.
 3. A main content area occupying the majority of the available space and displaying the selected data and functionality.
 
-The initial main navigation must contain the following sections:
-
+The initial main navigation must contain:
 - **Complex (Site)**
 - **Buildings**
 - **Residents**
@@ -115,17 +103,14 @@ Navigation items and their visibility must be controlled by permissions. A user 
 
 ### 5.1 Complex (Site)
 
-The Complex section represents the residential complex as a single entity/record.
+The Complex section represents the residential complex as a single entity/record. The main list/table is expected to contain one row for the complex.
 
-The main list/table is expected to contain one row for the complex. The row should display core information such as:
-
+The row should display core information such as:
 - Complex name
 - Address
 - Actions and related resources represented by clear icons, such as photos, documents, and other complex-level information
 
-Users with permission to create complex records may see an **Add (+)** action. Users without that permission must not see the Add action.
-
-Users with permission to edit the complex may see an **Edit (pencil)** action.
+Users with permission to create complex records may see an **Add (+)** action. Users with permission to edit the complex may see an **Edit (pencil)** action.
 
 Editing should use an explicit Edit action rather than relying on double-click. When editing begins, display values may be replaced by appropriate input controls. Confirming the edit saves the changes and returns the row to its normal display state.
 
@@ -147,21 +132,89 @@ A resident with ordinary resident-level access should see only their own residen
 
 Authorized roles, such as Admin, Management Company, and Chairman, may have permission to view the complete list of residents. The exact role-to-permission matrix will be defined separately.
 
+For each resident, the interface should be able to display:
+- Apartment/unit number
+- First name
+- Last name
+- Total amount charged
+- Total amount paid
+- Remaining balance/debt
+- Available invoices/receipts and related documents
+
+The exact financial fields and calculation rules will be defined separately.
+
 ### 5.4 Administration
 
 The Administration section contains administrative functions and is restricted to roles with the corresponding permissions.
 
 The exact functionality of Administration will be defined during the requirements phase.
 
-## 6. Data and Persistence Architecture
+## 6. Billing, Annual Charges and Invoices
 
-The application will contain persistent data representing the complex, its buildings, residents/users, documents, photos, permissions, and other entities defined during the requirements phase.
+The system must support annual charges for residents and the generation and distribution of invoices/receipts.
 
-The data model and database architecture must be designed from the beginning to support the application's roles, permissions, multilingual content, relationships between the complex and its buildings/residents, and future expansion.
+### 6.1 Annual Charge Definition
+
+The Management Company must have an authorized function for managing annual resident charges.
+
+An authorized user must be able to define an annual charge by specifying at least:
+- Year
+- Amount
+
+For example, an authorized user may create an annual charge for 2026 with an amount of EUR 1,400.
+
+### 6.2 Generate and Send to All Residents
+
+The system must provide an explicit action such as **Send to All** for an authorized user.
+
+When executed, the system must create an individual invoice/receipt for each applicable resident based on the annual charge and generate the corresponding PDF document.
+
+Each generated document must be associated with the correct resident and retained for later access from that resident's record. The system must also send the generated invoice/receipt to the resident's registered email address.
+
+The operation must not merely send one shared document to everyone: each resident must receive an individual document associated with that resident.
+
+Generated invoices/receipts must be preserved as historical records. If the annual charge is subsequently changed, previously generated invoices must not silently change with it.
+
+### 6.3 Resident Billing History
+
+A resident can have multiple invoices/receipts over time. Invoice data must therefore not be stored as a single field inside the resident record.
+
+The logical relationship is **one resident → many invoices/receipts**.
+
+Each invoice/receipt must reference its resident and contain relevant billing information, including at least the billing year and amount. Exact invoice fields will be defined during the data-model phase.
+
+Payments must be modeled separately from invoices so that the system can represent zero, one, or multiple payments against an invoice where required.
+
+The resident's financial summary should be derived from invoices and recorded payments, including:
+- Total charged
+- Total paid
+- Outstanding balance/debt
+
+The system may maintain calculated summary values for performance, but the underlying invoice and payment records remain the source of truth.
+
+### 6.4 Invoice Access
+
+A resident must be able to access their own invoices/receipts from their Residents view.
+
+Authorized administrative roles may be able to access invoices for all residents according to their permissions.
+
+Access to an invoice must be protected by permissions and ownership/association rules so that a resident cannot access another resident's financial documents.
+
+## 7. Data and Persistence Architecture
+
+The application will contain persistent data representing the complex, buildings, residents/users, documents, photos, roles, permissions, annual charges, invoices/receipts, payments, and other entities defined during the requirements phase.
+
+The logical data model must explicitly support one-to-many and many-to-many relationships where required. In particular, one resident must be able to have many invoices/receipts and many payments over time.
+
+Invoices/receipts must be separate entities related to residents rather than fields embedded directly into a resident record.
+
+PDF files and other binary assets must be stored through an appropriate file/object storage mechanism, while the database stores their metadata and relationships. The exact storage technology will be selected during the architecture phase.
+
+The data model and database architecture must be designed from the beginning to support roles, permissions, multilingual content, relationships between the complex and its buildings/residents, financial history, documents, and future expansion.
 
 The specific database technology and implementation approach are not yet defined. Selecting and designing the persistence layer is an explicit technical challenge of the project and will be addressed during the architecture phase.
 
-## 7. Permission Model
+## 8. Permission Model
 
 The system will use role-based permissions.
 
@@ -169,8 +222,10 @@ Every protected page, navigation item, data operation, and functional area must 
 
 Permissions must control not only whether a user can open a section, but also operations such as viewing, creating, editing, deleting/marking for deletion, and accessing individual resources where applicable.
 
+Financial data and invoices require additional ownership/access checks so that residents can only access their own financial information unless their role explicitly grants broader access.
+
 The detailed permission matrix will be defined during the requirements phase.
 
-## 8. Requirements Status
+## 9. Requirements Status
 
 This specification is a living document. Requirements will be added, clarified, and revised as the project is discussed.
