@@ -1,279 +1,476 @@
 import React, { useState } from 'react';
 import {
   Layers,
-  Home,
-  UserCheck,
-  FileText,
+  Building2,
+  MapPin,
+  User,
+  Clock,
   Plus,
   Edit2,
-  Phone,
-  CheckCircle,
-  Thermometer,
-  ArrowUpRight
+  Trash2,
+  RefreshCw,
+  Search,
+  Filter,
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  ShieldCheck
 } from 'lucide-react';
-import { Building, UserRole, Language } from '../types';
+import { BuildingEntity, ComplexEntity } from '../api/databaseApi';
+import { UserRole, Language } from '../types';
 import { translations } from '../i18n/translations';
 
 interface BuildingsViewProps {
-  buildings: Building[];
-  onUpdateBuilding: (building: Building) => void;
-  onAddBuilding: (building: Building) => void;
+  buildings: BuildingEntity[];
+  complexes: ComplexEntity[];
+  selectedComplexFilter: number | 'all';
+  onSelectComplexFilter: (id: number | 'all') => void;
+  onCreateBuilding: (data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => Promise<void>;
+  onUpdateBuilding: (id: number, data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => Promise<void>;
+  onDeleteBuilding: (id: number) => Promise<void>;
+  onRefresh: () => void;
+  loading: boolean;
   currentRole: UserRole;
   currentLang: Language;
 }
 
 export const BuildingsView: React.FC<BuildingsViewProps> = ({
   buildings,
+  complexes,
+  selectedComplexFilter,
+  onSelectComplexFilter,
+  onCreateBuilding,
   onUpdateBuilding,
-  onAddBuilding,
+  onDeleteBuilding,
+  onRefresh,
+  loading,
   currentRole,
-  currentLang
+  currentLang,
 }) => {
   const t = translations[currentLang];
-  const canManage = ['admin', 'management_company', 'chairman'].includes(currentRole);
+  const canManage = ['admin', 'management_company', 'chairman', 'board_member'].includes(currentRole);
 
-  const [editingBuilding, setEditingBuilding] = useState<Building | null>(null);
-  const [isAddingNew, setIsAddingNew] = useState(false);
+  // Search & Filter state
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const [newBlock, setNewBlock] = useState<Partial<Building>>({
-    blockCode: 'Block D',
-    name: 'Palmiye Blok',
-    totalFloors: 6,
-    totalUnits: 16,
-    occupiedUnits: 16,
-    caretakerName: 'Mehmet Yılmaz',
-    caretakerPhone: '+90 532 555 0192',
-    elevatorCount: 2,
-    heatingType: 'Individual VRF / Multi-Split Heat Pump',
-    photos: ['https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80'],
-    documentsCount: 2,
-    notes: 'Newly added residential block.'
+  // Modals state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingBuilding, setEditingBuilding] = useState<BuildingEntity | null>(null);
+  const [deletingBuilding, setDeletingBuilding] = useState<BuildingEntity | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Form states
+  const [addForm, setAddForm] = useState({
+    ComplexID: complexes[0]?.ComplexID || 1,
+    BuildingName: '',
+    ChangeUserID: currentRole || 'admin_user',
   });
 
-  const handleAddSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBlock.blockCode || !newBlock.name) return;
+  const [editForm, setEditForm] = useState({
+    ComplexID: 1,
+    BuildingName: '',
+    ChangeUserID: '',
+  });
 
-    const created: Building = {
-      id: `bld-${Date.now()}`,
-      blockCode: newBlock.blockCode || 'Block D',
-      name: newBlock.name || 'New Block',
-      totalFloors: Number(newBlock.totalFloors) || 6,
-      totalUnits: Number(newBlock.totalUnits) || 16,
-      occupiedUnits: Number(newBlock.occupiedUnits) || 16,
-      caretakerName: newBlock.caretakerName || 'Mehmet Yılmaz',
-      caretakerPhone: newBlock.caretakerPhone || '+90 532 555 0192',
-      elevatorCount: Number(newBlock.elevatorCount) || 2,
-      heatingType: newBlock.heatingType || 'Multi-Split Heat Pump',
-      photos: newBlock.photos || [],
-      documentsCount: 1,
-      notes: newBlock.notes || ''
-    };
+  // Filter buildings by selected complex and search term
+  const filteredBuildings = buildings.filter((building) => {
+    const matchesComplex =
+      selectedComplexFilter === 'all' || building.ComplexID === selectedComplexFilter;
+    const matchesSearch =
+      !searchTerm ||
+      building.BuildingName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(building.BuildingID).includes(searchTerm) ||
+      (building.ComplexName && building.ComplexName.toLowerCase().includes(searchTerm.toLowerCase()));
+    return matchesComplex && matchesSearch;
+  });
 
-    onAddBuilding(created);
-    setIsAddingNew(false);
+  const handleOpenAdd = () => {
+    const defaultComplexId =
+      selectedComplexFilter !== 'all'
+        ? selectedComplexFilter
+        : complexes[0]?.ComplexID || 1;
+    setAddForm({
+      ComplexID: defaultComplexId,
+      BuildingName: '',
+      ChangeUserID: currentRole || 'admin_user',
+    });
+    setFormError(null);
+    setIsAddModalOpen(true);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleOpenEdit = (building: BuildingEntity) => {
+    setEditingBuilding(building);
+    setEditForm({
+      ComplexID: building.ComplexID,
+      BuildingName: building.BuildingName,
+      ChangeUserID: currentRole || building.ChangeUserID || 'admin_user',
+    });
+    setFormError(null);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingBuilding) {
-      onUpdateBuilding(editingBuilding);
+    if (!addForm.BuildingName.trim()) {
+      setFormError('Building name is required');
+      return;
+    }
+    if (!addForm.ComplexID) {
+      setFormError('Parent complex must be selected');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onCreateBuilding({
+        ComplexID: Number(addForm.ComplexID),
+        BuildingName: addForm.BuildingName.trim(),
+        ChangeUserID: addForm.ChangeUserID || currentRole || 'admin_user',
+      });
+      setIsAddModalOpen(false);
+      setAddForm({
+        ComplexID: complexes[0]?.ComplexID || 1,
+        BuildingName: '',
+        ChangeUserID: currentRole || 'admin_user',
+      });
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to create building');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBuilding) return;
+    if (!editForm.BuildingName.trim()) {
+      setFormError('Building name is required');
+      return;
+    }
+    if (!editForm.ComplexID) {
+      setFormError('Parent complex must be selected');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onUpdateBuilding(editingBuilding.BuildingID, {
+        ComplexID: Number(editForm.ComplexID),
+        BuildingName: editForm.BuildingName.trim(),
+        ChangeUserID: editForm.ChangeUserID || currentRole || 'admin_user',
+      });
       setEditingBuilding(null);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to update building');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingBuilding) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onDeleteBuilding(deletingBuilding.BuildingID);
+      setDeletingBuilding(null);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to delete building');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+      {/* Top Header & PostgreSQL Registry Toolbar */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">{t.buildingsTitle}</h2>
-          <p className="text-xs text-slate-500 mt-1">{t.buildingsSubtitle}</p>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xl font-bold text-slate-900">{t.buildingsTitle}</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
+              PostgreSQL
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Registered building blocks and relational hierarchies stored in PostgreSQL.
+          </p>
         </div>
-        {canManage && (
+
+        <div className="flex items-center space-x-3 shrink-0">
           <button
-            id="add-building-btn"
-            onClick={() => setIsAddingNew(true)}
-            className="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0"
+            id="refresh-buildings-btn"
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition-colors"
+            title="Refresh database records"
           >
-            <Plus className="w-4 h-4 mr-1.5" />
-            {t.addBuilding}
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-        )}
+
+          {canManage && (
+            <button
+              id="add-building-btn"
+              onClick={handleOpenAdd}
+              className="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              {t.addBuilding}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Search */}
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search buildings by name or ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:bg-white transition-all"
+          />
+        </div>
+
+        {/* Filter by Complex */}
+        <div className="flex items-center space-x-2 shrink-0">
+          <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">Filter Complex:</span>
+          <select
+            id="complex-filter-select"
+            value={selectedComplexFilter}
+            onChange={(e) =>
+              onSelectComplexFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))
+            }
+            className="bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+          >
+            <option value="all">All Complexes ({buildings.length} total blocks)</option>
+            {complexes.map((c) => {
+              const bCount = buildings.filter((b) => b.ComplexID === c.ComplexID).length;
+              return (
+                <option key={c.ComplexID} value={c.ComplexID}>
+                  {c.ComplexName} ({bCount} blocks)
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       {/* Buildings Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {buildings.map((building) => {
-          const occupancy = Math.round((building.occupiedUnits / building.totalUnits) * 100);
-          return (
-            <div
-              key={building.id}
-              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs hover:shadow-md transition-shadow flex flex-col justify-between"
-            >
-              <div>
-                {/* Photo banner */}
-                <div className="relative h-44 bg-slate-100 overflow-hidden">
-                  <img
-                    src={building.photos[0] || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=600&q=80'}
-                    alt={building.name}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-xs text-white text-xs font-bold px-2.5 py-1 rounded-lg">
-                    {building.blockCode}
-                  </div>
-                  <div className="absolute top-3 right-3 bg-teal-600/90 text-white text-xs font-semibold px-2 py-1 rounded-lg">
-                    {building.totalUnits} Units
-                  </div>
-                </div>
+      {filteredBuildings.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredBuildings.map((building) => {
+            const parentComplex = complexes.find((c) => c.ComplexID === building.ComplexID);
+            return (
+              <div
+                key={building.BuildingID}
+                className="bg-white rounded-2xl border border-slate-200 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+              >
+                <div>
+                  {/* Card Header & Block Banner */}
+                  <div className="p-5 pb-4 border-b border-slate-100 bg-linear-to-b from-slate-50/70 to-white">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 font-mono text-[11px] font-bold text-teal-800">
+                            BuildingID: {building.BuildingID}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-mono text-[11px] font-semibold text-slate-600">
+                            ComplexID: {building.ComplexID}
+                          </span>
+                        </div>
+                        <h3 className="font-extrabold text-slate-900 text-base group-hover:text-teal-700 transition-colors">
+                          {building.BuildingName}
+                        </h3>
+                      </div>
 
-                {/* Body Content */}
-                <div className="p-5 space-y-4">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base">{building.name}</h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{building.notes}</p>
-                  </div>
-
-                  {/* Quick specs grid */}
-                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div>
-                      <span className="text-slate-600 block">{t.floorsCount}</span>
-                      <span className="font-bold text-slate-800">{building.totalFloors} Floors</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-600 block">{t.occupancyRate}</span>
-                      <span className="font-bold text-teal-700">{occupancy}% ({building.occupiedUnits}/{building.totalUnits})</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-600 block">Elevators</span>
-                      <span className="font-bold text-slate-800">{building.elevatorCount} Certified</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-600 block">Heating</span>
-                      <span className="font-bold text-slate-800">VRF Multi-Split</span>
-                    </div>
-                  </div>
-
-                  {/* Caretaker / Kapıcı badge */}
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-orange-50/70 border border-orange-200/60 text-xs">
-                    <div className="flex items-center space-x-2">
-                      <UserCheck className="w-4 h-4 text-orange-700 shrink-0" />
-                      <div>
-                        <div className="font-bold text-slate-900">{building.caretakerName}</div>
-                        <div className="text-[11px] text-orange-800">{building.caretakerPhone}</div>
+                      <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
+                        <Layers className="w-5 h-5" />
                       </div>
                     </div>
-                    <span className="px-2 py-0.5 bg-white text-[10px] font-bold text-orange-800 rounded-md border border-orange-200">
-                      Kapıcı
-                    </span>
+                  </div>
+
+                  {/* Body Specs */}
+                  <div className="p-5 space-y-3.5 text-xs">
+                    {/* Parent Complex Link */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1">
+                      <div className="flex items-center space-x-1.5 text-slate-500 font-semibold text-[10px] uppercase">
+                        <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Parent Complex</span>
+                      </div>
+                      <div className="font-bold text-slate-900 text-xs">
+                        {building.ComplexName || parentComplex?.ComplexName || `Complex #${building.ComplexID}`}
+                      </div>
+                      <div className="text-[11px] text-slate-500 line-clamp-1 flex items-center pt-0.5">
+                        <MapPin className="w-3 h-3 mr-1 text-slate-400 shrink-0" />
+                        {building.Address || parentComplex?.Address || 'Registered site address'}
+                      </div>
+                    </div>
+
+                    {/* Audit Metadata */}
+                    <div className="space-y-1.5 pt-1 text-[11px]">
+                      <div className="flex items-center justify-between text-slate-500">
+                        <span className="flex items-center">
+                          <User className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                          Last changed by:
+                        </span>
+                        <span className="font-mono font-bold text-slate-700">
+                          {building.ChangeUserID || 'system'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-500">
+                        <span className="flex items-center">
+                          <Clock className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                          Record timestamp:
+                        </span>
+                        <span className="font-medium text-slate-700">
+                          {new Date(building.ChangeDate).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Card Footer Actions */}
-              <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium flex items-center">
-                  <FileText className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                  {building.documentsCount} Tech Docs
-                </span>
+                {/* Card Actions Footer */}
                 {canManage && (
-                  <button
-                    onClick={() => setEditingBuilding(building)}
-                    className="text-teal-700 hover:text-teal-900 font-bold inline-flex items-center"
-                  >
-                    <Edit2 className="w-3.5 h-3.5 mr-1" />
-                    {t.edit}
-                  </button>
+                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-2">
+                    <button
+                      onClick={() => handleOpenEdit(building)}
+                      className="inline-flex items-center px-3 py-1.5 text-xs text-slate-700 hover:text-teal-700 bg-white hover:bg-teal-50 border border-slate-200 rounded-lg font-bold transition-colors"
+                      title="Edit Building"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 mr-1" />
+                      {t.edit}
+                    </button>
+                    <button
+                      onClick={() => setDeletingBuilding(building)}
+                      className="inline-flex items-center px-3 py-1.5 text-xs text-red-600 hover:text-red-700 bg-white hover:bg-red-50 border border-slate-200 rounded-lg font-bold transition-colors"
+                      title="Delete Building"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      {t.delete}
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs space-y-4">
+          <Layers className="w-12 h-12 text-slate-300 mx-auto" />
+          <h3 className="text-base font-bold text-slate-800">No Buildings Found</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            {searchTerm || selectedComplexFilter !== 'all'
+              ? 'No buildings match your active search or filter criteria.'
+              : 'There are currently no building blocks in the database. Click below to add the first building.'}
+          </p>
+          {canManage && (
+            <button
+              onClick={handleOpenAdd}
+              className="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-xs"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              {t.addBuilding}
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* Edit Building Modal */}
-      {editingBuilding && (
+      {/* Add Building Modal */}
+      {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 text-sm">
-            <h3 className="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-200">
-              Edit {editingBuilding.blockCode} ({editingBuilding.name})
-            </h3>
-            <form onSubmit={handleEditSubmit} className="space-y-3">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-bold text-slate-900">Add Building Block</h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Block Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Parent Complex <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={addForm.ComplexID}
+                  onChange={(e) => setAddForm({ ...addForm, ComplexID: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none cursor-pointer"
+                  required
+                >
+                  {complexes.map((c) => (
+                    <option key={c.ComplexID} value={c.ComplexID}>
+                      ID #{c.ComplexID} - {c.ComplexName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Building / Block Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
-                  value={editingBuilding.name}
-                  onChange={(e) => setEditingBuilding({ ...editingBuilding, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
+                  value={addForm.BuildingName}
+                  onChange={(e) => setAddForm({ ...addForm, BuildingName: e.target.value })}
+                  placeholder="e.g. A Blok (West Tower)"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Total Floors</label>
-                  <input
-                    type="number"
-                    value={editingBuilding.totalFloors}
-                    onChange={(e) => setEditingBuilding({ ...editingBuilding, totalFloors: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Total Units</label>
-                  <input
-                    type="number"
-                    value={editingBuilding.totalUnits}
-                    onChange={(e) => setEditingBuilding({ ...editingBuilding, totalUnits: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    required
-                  />
-                </div>
-              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Caretaker Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Change User ID
+                </label>
                 <input
                   type="text"
-                  value={editingBuilding.caretakerName}
-                  onChange={(e) => setEditingBuilding({ ...editingBuilding, caretakerName: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                  required
+                  value={addForm.ChangeUserID}
+                  onChange={(e) => setAddForm({ ...addForm, ChangeUserID: e.target.value })}
+                  placeholder="admin_user"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Caretaker Phone</label>
-                <input
-                  type="text"
-                  value={editingBuilding.caretakerPhone}
-                  onChange={(e) => setEditingBuilding({ ...editingBuilding, caretakerPhone: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Notes & Description</label>
-                <textarea
-                  rows={2}
-                  value={editingBuilding.notes}
-                  onChange={(e) => setEditingBuilding({ ...editingBuilding, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setEditingBuilding(null)}
-                  className="px-3 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 font-semibold"
+                  onClick={() => setIsAddModalOpen(false)}
+                  disabled={submitting}
+                  className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-bold shadow-xs flex items-center"
                 >
-                  {t.save}
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Create Building'
+                  )}
                 </button>
               </div>
             </form>
@@ -281,95 +478,155 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
         </div>
       )}
 
-      {/* Add New Building Modal */}
-      {isAddingNew && (
+      {/* Edit Building Modal */}
+      {editingBuilding && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 text-sm">
-            <h3 className="text-base font-bold text-slate-900 mb-4 pb-2 border-b border-slate-200">
-              {t.addBuilding}
-            </h3>
-            <form onSubmit={handleAddSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Block Code</label>
-                  <input
-                    type="text"
-                    value={newBlock.blockCode}
-                    onChange={(e) => setNewBlock({ ...newBlock, blockCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    placeholder="e.g. Block D"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Block Name</label>
-                  <input
-                    type="text"
-                    value={newBlock.name}
-                    onChange={(e) => setNewBlock({ ...newBlock, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    placeholder="e.g. Palmiye Blok"
-                    required
-                  />
-                </div>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-bold text-slate-900">
+                Edit Building (ID: {editingBuilding.BuildingID})
+              </h3>
+              <button
+                onClick={() => setEditingBuilding(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Total Floors</label>
-                  <input
-                    type="number"
-                    value={newBlock.totalFloors}
-                    onChange={(e) => setNewBlock({ ...newBlock, totalFloors: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Total Units</label>
-                  <input
-                    type="number"
-                    value={newBlock.totalUnits}
-                    onChange={(e) => setNewBlock({ ...newBlock, totalUnits: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
-                    required
-                  />
-                </div>
-              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 pt-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Caretaker</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Parent Complex <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={editForm.ComplexID}
+                  onChange={(e) => setEditForm({ ...editForm, ComplexID: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none cursor-pointer"
+                  required
+                >
+                  {complexes.map((c) => (
+                    <option key={c.ComplexID} value={c.ComplexID}>
+                      ID #{c.ComplexID} - {c.ComplexName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Building / Block Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
-                  value={newBlock.caretakerName}
-                  onChange={(e) => setNewBlock({ ...newBlock, caretakerName: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold"
+                  value={editForm.BuildingName}
+                  onChange={(e) => setEditForm({ ...editForm, BuildingName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Notes</label>
-                <textarea
-                  rows={2}
-                  value={newBlock.notes}
-                  onChange={(e) => setNewBlock({ ...newBlock, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Change User ID
+                </label>
+                <input
+                  type="text"
+                  value={editForm.ChangeUserID}
+                  onChange={(e) => setEditForm({ ...editForm, ChangeUserID: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
                 />
               </div>
+
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setIsAddingNew(false)}
-                  className="px-3 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 font-semibold"
+                  onClick={() => setEditingBuilding(null)}
+                  disabled={submitting}
+                  className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-bold"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-bold shadow-xs flex items-center"
                 >
-                  {t.add}
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Building Confirmation Modal */}
+      {deletingBuilding && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 text-red-600 pb-3 border-b border-slate-200">
+              <AlertTriangle className="w-6 h-6" />
+              <h3 className="text-base font-bold text-slate-900">Delete Building Block</h3>
+            </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
+              </div>
+            )}
+
+            <div className="py-4 space-y-2">
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Are you sure you want to permanently delete{' '}
+                <strong className="text-slate-900">{deletingBuilding.BuildingName}</strong> (ID:{' '}
+                {deletingBuilding.BuildingID}) from PostgreSQL?
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Parent Complex:{' '}
+                <strong>
+                  {deletingBuilding.ComplexName || `Complex #${deletingBuilding.ComplexID}`}
+                </strong>
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeletingBuilding(null)}
+                disabled={submitting}
+                className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={submitting}
+                className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-xs flex items-center"
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Yes, Delete Building'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
