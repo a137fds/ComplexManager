@@ -66,7 +66,37 @@ For example, Guest may have permissions such as:
 
 The exact Guest permissions will be defined later.
 
-## 4. Permission Model
+## 4. Localization and Multilingual Support
+
+The application must be designed as a multilingual system from the beginning. Internationalization and localization must be part of the initial architecture rather than added later as a separate feature.
+
+The system must support the following languages at launch:
+
+- Russian
+- English
+- French
+- Turkish
+- Danish
+- Swedish
+- Polish
+
+The architecture must allow additional languages to be added later without requiring a redesign of the application or its existing content model.
+
+### 4.1 Language Selection
+
+The public-facing interface must provide a language selector, accessible from the main page and available consistently throughout the website.
+
+The selector should be presented as a flag-based control or another clear visual language selector. Opening it should display the available languages, including their corresponding flags.
+
+### 4.2 Human-Prepared Translations
+
+The application must use explicitly prepared translations for all supported interface text and system content where translation is required.
+
+Automatic browser translation or third-party machine translation (for example, Google Translate) must not be relied upon as the primary localization mechanism. This is especially important for technical, administrative, financial, legal, and other context-sensitive information where an incorrect translation could change the meaning.
+
+Translations must therefore be stored and managed as part of the application's localization system, allowing each supported language to have its own verified text.
+
+## 5. Permission Model
 
 The system will use role-based permissions.
 
@@ -74,6 +104,6 @@ Every protected page or functional area must have permissions associated with it
 
 The detailed permission matrix will be defined during the requirements phase.
 
-## 5. Requirements Status
+## 6. Requirements Status
 
 This specification is a living document. Requirements will be added, clarified, and revised as the project is discussed.
