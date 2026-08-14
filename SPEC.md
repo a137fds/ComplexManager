@@ -47,7 +47,7 @@ Responsible for financial control functions assigned by the system permissions.
 
 ### 3.6 Site Staff
 
-Operational staff member of the residential complex, including roles such as the Turkish site caretaker/staff member (kapıcı).
+Operational staff member of the residential complex, including the Turkish site caretaker/staff member (kapıcı).
 
 ### 3.7 User
 
@@ -96,14 +96,81 @@ Automatic browser translation or third-party machine translation (for example, G
 
 Translations must therefore be stored and managed as part of the application's localization system, allowing each supported language to have its own verified text.
 
-## 5. Permission Model
+## 5. Main Application Layout and Navigation
+
+The application should use a conventional management-dashboard layout consisting of three main visual areas:
+
+1. A top header area containing the visual identity of the complex, such as a title and a representative image or banner.
+2. A left-side navigation menu.
+3. A main content area occupying the majority of the available space and displaying the selected data and functionality.
+
+The initial main navigation must contain the following sections:
+
+- **Complex (Site)**
+- **Buildings**
+- **Residents**
+- **Administration**
+
+Navigation items and their visibility must be controlled by permissions. A user must only see sections for which the user's role has access.
+
+### 5.1 Complex (Site)
+
+The Complex section represents the residential complex as a single entity/record.
+
+The main list/table is expected to contain one row for the complex. The row should display core information such as:
+
+- Complex name
+- Address
+- Actions and related resources represented by clear icons, such as photos, documents, and other complex-level information
+
+Users with permission to create complex records may see an **Add (+)** action. Users without that permission must not see the Add action.
+
+Users with permission to edit the complex may see an **Edit (pencil)** action.
+
+Editing should use an explicit Edit action rather than relying on double-click. When editing begins, display values may be replaced by appropriate input controls. Confirming the edit saves the changes and returns the row to its normal display state.
+
+### 5.2 Buildings
+
+The Buildings section represents the individual buildings belonging to the complex.
+
+The interface should follow the same general pattern as the Complex section: records are displayed in a table/list, with building information and related resources represented by appropriate columns and icons.
+
+Typical building-level resources may include photos, documents, and other information associated with the building.
+
+Creation and editing actions must be controlled by role permissions.
+
+### 5.3 Residents
+
+The Residents section represents the residents/users associated with the complex.
+
+A resident with ordinary resident-level access should see only their own resident record and information permitted for that user.
+
+Authorized roles, such as Admin, Management Company, and Chairman, may have permission to view the complete list of residents. The exact role-to-permission matrix will be defined separately.
+
+### 5.4 Administration
+
+The Administration section contains administrative functions and is restricted to roles with the corresponding permissions.
+
+The exact functionality of Administration will be defined during the requirements phase.
+
+## 6. Data and Persistence Architecture
+
+The application will contain persistent data representing the complex, its buildings, residents/users, documents, photos, permissions, and other entities defined during the requirements phase.
+
+The data model and database architecture must be designed from the beginning to support the application's roles, permissions, multilingual content, relationships between the complex and its buildings/residents, and future expansion.
+
+The specific database technology and implementation approach are not yet defined. Selecting and designing the persistence layer is an explicit technical challenge of the project and will be addressed during the architecture phase.
+
+## 7. Permission Model
 
 The system will use role-based permissions.
 
-Every protected page or functional area must have permissions associated with it. Permissions are assigned to roles, including the Guest role.
+Every protected page, navigation item, data operation, and functional area must have permissions associated with it. Permissions are assigned to roles, including the Guest role.
+
+Permissions must control not only whether a user can open a section, but also operations such as viewing, creating, editing, deleting/marking for deletion, and accessing individual resources where applicable.
 
 The detailed permission matrix will be defined during the requirements phase.
 
-## 6. Requirements Status
+## 8. Requirements Status
 
 This specification is a living document. Requirements will be added, clarified, and revised as the project is discussed.
