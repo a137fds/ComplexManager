@@ -6,371 +6,559 @@ import {
   FileCheck2,
   Calendar,
   Layers,
-  Home,
   Phone,
-  Shield,
   Edit3,
-  Check,
+  Trash2,
+  Plus,
+  RefreshCw,
+  Clock,
+  User,
+  AlertTriangle,
   X,
-  Image as ImageIcon,
-  BookOpen,
-  Sparkles
+  CheckCircle2,
+  ArrowRight,
+  ShieldAlert
 } from 'lucide-react';
-import { ComplexInfo, UserRole, Language } from '../types';
+import { ComplexEntity, BuildingEntity } from '../api/databaseApi';
+import { UserRole, Language } from '../types';
 import { translations } from '../i18n/translations';
 
 interface ComplexViewProps {
-  complex: ComplexInfo;
-  onUpdateComplex: (updated: ComplexInfo) => void;
+  complexes: ComplexEntity[];
+  selectedComplexId: number | null;
+  onSelectComplex: (id: number) => void;
+  onCreateComplex: (data: { ComplexName: string; Address: string; ChangeUserID?: string }) => Promise<void>;
+  onUpdateComplex: (id: number, data: { ComplexName: string; Address: string; ChangeUserID?: string }) => Promise<void>;
+  onDeleteComplex: (id: number) => Promise<void>;
+  onRefresh: () => void;
+  loading: boolean;
+  buildings: BuildingEntity[];
+  onNavigateToBuildings?: (complexId?: number) => void;
   currentRole: UserRole;
   currentLang: Language;
 }
 
 export const ComplexView: React.FC<ComplexViewProps> = ({
-  complex,
+  complexes,
+  selectedComplexId,
+  onSelectComplex,
+  onCreateComplex,
   onUpdateComplex,
+  onDeleteComplex,
+  onRefresh,
+  loading,
+  buildings,
+  onNavigateToBuildings,
   currentRole,
-  currentLang
+  currentLang,
 }) => {
   const t = translations[currentLang];
-  const canEdit = ['admin', 'management_company', 'chairman'].includes(currentRole);
+  const canManage = ['admin', 'management_company', 'chairman', 'board_member'].includes(currentRole);
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<ComplexInfo>(complex);
-  const [activePhotoModal, setActivePhotoModal] = useState<string | null>(null);
+  // Modals state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingComplex, setEditingComplex] = useState<ComplexEntity | null>(null);
+  const [deletingComplex, setDeletingComplex] = useState<ComplexEntity | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  // Form states
+  const [addForm, setAddForm] = useState({
+    ComplexName: '',
+    Address: '',
+    ChangeUserID: currentRole || 'admin_user',
+  });
+
+  const [editForm, setEditForm] = useState({
+    ComplexName: '',
+    Address: '',
+    ChangeUserID: '',
+  });
+
+  // Current active complex record from PostgreSQL
+  const activeComplex = complexes.find((c) => c.ComplexID === selectedComplexId) || complexes[0] || null;
+
+  // Filter child buildings for active complex
+  const activeBuildings = activeComplex
+    ? buildings.filter((b) => b.ComplexID === activeComplex.ComplexID)
+    : [];
+
+  const handleOpenEdit = (complex: ComplexEntity) => {
+    setEditingComplex(complex);
+    setEditForm({
+      ComplexName: complex.ComplexName,
+      Address: complex.Address,
+      ChangeUserID: currentRole || complex.ChangeUserID || 'admin_user',
+    });
+    setFormError(null);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateComplex(formData);
-    setIsEditing(false);
+    if (!addForm.ComplexName.trim()) {
+      setFormError('Complex name is required');
+      return;
+    }
+    if (!addForm.Address.trim()) {
+      setFormError('Address is required');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onCreateComplex({
+        ComplexName: addForm.ComplexName.trim(),
+        Address: addForm.Address.trim(),
+        ChangeUserID: addForm.ChangeUserID || currentRole || 'admin_user',
+      });
+      setIsAddModalOpen(false);
+      setAddForm({
+        ComplexName: '',
+        Address: '',
+        ChangeUserID: currentRole || 'admin_user',
+      });
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to create complex');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingComplex) return;
+    if (!editForm.ComplexName.trim()) {
+      setFormError('Complex name is required');
+      return;
+    }
+    if (!editForm.Address.trim()) {
+      setFormError('Address is required');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onUpdateComplex(editingComplex.ComplexID, {
+        ComplexName: editForm.ComplexName.trim(),
+        Address: editForm.Address.trim(),
+        ChangeUserID: editForm.ChangeUserID || currentRole || 'admin_user',
+      });
+      setEditingComplex(null);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to update complex');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingComplex) return;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await onDeleteComplex(deletingComplex.ComplexID);
+      setDeletingComplex(null);
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to delete complex');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Identity Card */}
-      <div className="relative rounded-2xl overflow-hidden bg-slate-900 shadow-md">
-        <div className="absolute inset-0 z-0 opacity-40 mix-blend-overlay">
-          <img
-            src={complex.representativePhoto}
-            alt={complex.name}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        <div className="relative z-10 p-6 sm:p-8 md:p-10 text-white flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="space-y-2 max-w-3xl">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-semibold tracking-wide text-teal-200 border border-white/10">
-              <Landmark className="w-3.5 h-3.5" />
-              <span>Resmi Site Kaydı • {complex.nativeName}</span>
-            </div>
-            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
-              {complex.name}
-            </h2>
-            <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-sm text-slate-200">
-              <span className="flex items-center">
-                <MapPin className="w-4 h-4 mr-1 text-teal-400 shrink-0" />
-                {complex.address}, {complex.district} / {complex.city}, {complex.country}
-              </span>
-              <span className="flex items-center">
-                <Calendar className="w-4 h-4 mr-1 text-teal-400 shrink-0" />
-                {t.builtIn}: {complex.constructionYear}
-              </span>
-            </div>
-            <p className="text-sm text-slate-300 pt-2 leading-relaxed">
-              {complex.description[currentLang] || complex.description.en}
-            </p>
+      {/* Top Header & PostgreSQL Registry Toolbar */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xl font-bold text-slate-900">{t.complexTitle}</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
+              PostgreSQL
+            </span>
           </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Real-time residential complex records stored in PostgreSQL database.
+          </p>
+        </div>
 
-          {canEdit && (
-            <div className="shrink-0">
-              <button
-                id="edit-complex-btn"
-                onClick={() => setIsEditing(true)}
-                className="inline-flex items-center px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-sm font-semibold rounded-xl shadow-md transition-colors"
-              >
-                <Edit3 className="w-4 h-4 mr-2" />
-                {t.editComplexDetails}
-              </button>
-            </div>
+        <div className="flex items-center space-x-3 shrink-0">
+          <button
+            id="refresh-complexes-btn"
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition-colors"
+            title="Refresh database records"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
+          {canManage && (
+            <button
+              id="add-complex-btn"
+              onClick={() => {
+                setIsAddModalOpen(true);
+                setFormError(null);
+              }}
+              className="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add Complex
+            </button>
           )}
         </div>
       </div>
 
-      {/* Core Specification Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* Metric 1: Structural Info */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center space-x-3 text-teal-700">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
-              <Layers className="w-5 h-5 text-teal-700" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">{t.totalBlocksLabel} & {t.totalUnitsLabel}</h3>
+      {/* Complexes Selector Bar (if multiple or to switch active complex) */}
+      {complexes.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Registered Complexes ({complexes.length})
+            </span>
+            <span className="text-xs text-slate-400">Click to inspect / manage</span>
           </div>
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs text-slate-600 font-semibold">{t.totalBlocksLabel}</span>
-              <p className="text-2xl font-black text-slate-900">{complex.totalBlocks} Blocks</p>
-              <span className="text-[11px] text-teal-700 font-medium">Block A, B, C</span>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-xs text-slate-600 font-semibold">{t.totalUnitsLabel}</span>
-              <p className="text-2xl font-black text-slate-900">{complex.totalUnits} Units</p>
-              <span className="text-[11px] text-teal-700 font-medium">48 Independent Units</span>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {complexes.map((c) => {
+              const isSelected = activeComplex?.ComplexID === c.ComplexID;
+              const childCount = buildings.filter((b) => b.ComplexID === c.ComplexID).length;
+              return (
+                <div
+                  key={c.ComplexID}
+                  onClick={() => onSelectComplex(c.ComplexID)}
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-teal-50/70 border-teal-500 ring-2 ring-teal-500/20 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-2xs'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-mono text-[11px] font-bold text-slate-700">
+                          ID: {c.ComplexID}
+                        </span>
+                        <h4 className="font-bold text-slate-900 text-sm">{c.ComplexName}</h4>
+                      </div>
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
+                        {childCount} {childCount === 1 ? 'Building' : 'Buildings'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 line-clamp-1 flex items-center">
+                      <MapPin className="w-3 h-3 mr-1 text-slate-400 shrink-0" />
+                      {c.Address}
+                    </p>
+                  </div>
+
+                  <div className="pt-3 mt-3 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="flex items-center">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {new Date(c.ChangeDate).toLocaleDateString()}
+                    </span>
+
+                    {canManage && (
+                      <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleOpenEdit(c)}
+                          className="p-1 text-slate-500 hover:text-teal-600 rounded hover:bg-slate-100"
+                          title="Edit Complex"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingComplex(c)}
+                          className="p-1 text-slate-500 hover:text-red-600 rounded hover:bg-slate-100"
+                          title="Delete Complex"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        {/* Metric 2: Tax & Legal Registry */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center space-x-3 text-teal-700">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
-              <FileCheck2 className="w-5 h-5 text-teal-700" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">{t.taxInfo}</h3>
-          </div>
-          <div className="space-y-2 pt-1 text-sm">
-            <div className="flex justify-between py-1.5 border-b border-slate-100">
-              <span className="text-slate-600 font-medium">Vergi Numarası (VKN):</span>
-              <span className="font-mono font-bold text-slate-900">{complex.taxNumber}</span>
-            </div>
-            <div className="flex justify-between py-1.5 border-b border-slate-100">
-              <span className="text-slate-600 font-medium">Vergi Dairesi:</span>
-              <span className="font-semibold text-slate-900">{complex.taxOffice}</span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-600 font-medium">Posta Kodu:</span>
-              <span className="font-semibold text-slate-900">{complex.postalCode} Alanya</span>
-            </div>
-          </div>
-        </div>
+      {/* Active Complex Detailed Specification View */}
+      {activeComplex ? (
+        <div className="space-y-6">
+          {/* Hero Banner with Live PostgreSQL Record Details */}
+          <div className="relative rounded-2xl overflow-hidden bg-slate-900 shadow-md p-6 sm:p-8 text-white">
+            <div className="relative z-10 flex flex-col md:flex-row md:items-start justify-between gap-6">
+              <div className="space-y-3 max-w-3xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 text-xs font-semibold">
+                    <Landmark className="w-3.5 h-3.5" />
+                    <span>PostgreSQL Complex Record</span>
+                  </span>
+                  <span className="font-mono text-xs px-2.5 py-1 rounded-full bg-white/10 text-slate-200 border border-white/10">
+                    ComplexID: {activeComplex.ComplexID}
+                  </span>
+                </div>
 
-        {/* Metric 3: Bank Account (Site IBAN) */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center space-x-3 text-teal-700">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
-              <Landmark className="w-5 h-5 text-teal-700" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">{t.bankAccountInfo}</h3>
-          </div>
-          <div className="p-3.5 bg-teal-50/70 border border-teal-200/80 rounded-xl space-y-1.5">
-            <div className="text-xs font-semibold text-teal-900">{complex.bankName}</div>
-            <div className="font-mono text-xs sm:text-sm font-bold text-teal-950 tracking-wide select-all bg-white p-2 rounded-lg border border-teal-300">
-              {complex.iban}
-            </div>
-            <div className="text-[11px] text-teal-800 flex justify-between font-mono">
-              <span>SWIFT / BIC: <strong>{complex.swift}</strong></span>
-              <span>Account: <strong>Günbatımı Evleri Sitesi</strong></span>
-            </div>
-          </div>
-        </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  {activeComplex.ComplexName}
+                </h2>
 
-      </div>
+                <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-sm text-slate-300">
+                  <span className="flex items-center">
+                    <MapPin className="w-4 h-4 mr-1 text-teal-400 shrink-0" />
+                    {activeComplex.Address}
+                  </span>
+                </div>
 
-      {/* House Regulations & Emergency Contacts Two-Column Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Regulations & House Rules */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center space-x-2 text-slate-900">
-            <BookOpen className="w-5 h-5 text-teal-600" />
-            <h3 className="font-bold text-base">{t.complexRules}</h3>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 pt-1">
+                  <span className="flex items-center">
+                    <User className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                    Last changed by: <strong className="text-slate-200 ml-1">{activeComplex.ChangeUserID || 'system'}</strong>
+                  </span>
+                  <span className="flex items-center">
+                    <Clock className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                    Last updated: <strong className="text-slate-200 ml-1">{new Date(activeComplex.ChangeDate).toLocaleString()}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {canManage && (
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    id="edit-active-complex-btn"
+                    onClick={() => handleOpenEdit(activeComplex)}
+                    className="inline-flex items-center px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 mr-1.5" />
+                    Edit Record
+                  </button>
+                  <button
+                    id="delete-active-complex-btn"
+                    onClick={() => setDeletingComplex(activeComplex)}
+                    className="inline-flex items-center px-3.5 py-2 bg-red-600/80 hover:bg-red-600 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <ul className="space-y-2.5">
-            {complex.rules.map((rule, idx) => (
-              <li key={idx} className="flex items-start text-xs sm:text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="w-5 h-5 rounded-full bg-teal-100 text-teal-800 font-bold text-xs flex items-center justify-center mr-2.5 shrink-0">
-                  {idx + 1}
+
+          {/* Database Specs Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Metric 1: Structural Info & Building Count */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3 text-teal-700">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
+                    <Layers className="w-5 h-5 text-teal-700" />
+                  </div>
+                  <h3 className="font-bold text-slate-900 text-base">{t.totalBlocksLabel}</h3>
+                </div>
+                {onNavigateToBuildings && (
+                  <button
+                    onClick={() => onNavigateToBuildings(activeComplex.ComplexID)}
+                    className="text-xs text-teal-700 hover:text-teal-900 font-bold inline-flex items-center"
+                  >
+                    Manage Blocks
+                    <ArrowRight className="w-3 h-3 ml-1" />
+                  </button>
+                )}
+              </div>
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                <span className="text-xs text-slate-600 font-semibold">Associated Buildings</span>
+                <p className="text-3xl font-black text-slate-900 mt-1">{activeBuildings.length} Blocks</p>
+                <span className="text-xs text-teal-700 font-medium mt-1 block">
+                  {activeBuildings.map((b) => b.BuildingName).join(', ') || 'No building blocks registered'}
                 </span>
-                <span>{rule}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Emergency & Operational Contacts */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center space-x-2 text-slate-900">
-            <Phone className="w-5 h-5 text-teal-600" />
-            <h3 className="font-bold text-base">{t.emergencyContacts}</h3>
-          </div>
-          <div className="space-y-3 text-sm">
-            <div className="p-3 rounded-xl bg-orange-50/80 border border-orange-200/80 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-orange-900 uppercase">Site Staff / Caretaker (Kapıcı)</span>
-                <p className="font-bold text-slate-900 text-sm mt-0.5">{complex.emergencyContact.caretaker}</p>
               </div>
-              <span className="px-2.5 py-1 bg-white rounded-lg text-xs font-bold text-orange-800 border border-orange-200">
-                07:00 - 20:00
-              </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-500 uppercase">Night Security Guard</span>
-                <p className="font-semibold text-slate-900 text-sm mt-0.5">{complex.emergencyContact.security}</p>
+            {/* Metric 2: Registry & System Audit */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
+              <div className="flex items-center space-x-3 text-teal-700">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
+                  <FileCheck2 className="w-5 h-5 text-teal-700" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">Database Audit</h3>
               </div>
-              <span className="px-2.5 py-1 bg-white rounded-lg text-xs font-bold text-slate-700 border border-slate-200">
-                24 / 7
-              </span>
+              <div className="space-y-2 pt-1 text-xs">
+                <div className="flex justify-between py-1.5 border-b border-slate-100">
+                  <span className="text-slate-600 font-medium">Complex ID:</span>
+                  <span className="font-mono font-bold text-slate-900">{activeComplex.ComplexID}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100">
+                  <span className="text-slate-600 font-medium">Change User ID:</span>
+                  <span className="font-mono font-semibold text-slate-900">{activeComplex.ChangeUserID || 'system'}</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-600 font-medium">Change Date:</span>
+                  <span className="font-semibold text-slate-900">{new Date(activeComplex.ChangeDate).toLocaleString()}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-500 uppercase">Management Company Office</span>
-                <p className="font-semibold text-slate-900 text-sm mt-0.5">{complex.emergencyContact.management}</p>
+            {/* Metric 3: Address & Location Details */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
+              <div className="flex items-center space-x-3 text-teal-700">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-200">
+                  <Landmark className="w-5 h-5 text-teal-700" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">Location Registry</h3>
               </div>
-              <span className="px-2.5 py-1 bg-white rounded-lg text-xs font-bold text-slate-700 border border-slate-200">
-                Alanya Merkez
-              </span>
-            </div>
-
-            <div className="p-3 rounded-xl bg-red-50/80 border border-red-200/80 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-red-900 uppercase">Emergency Service (Police / Ambulance / Fire)</span>
-                <p className="font-bold text-red-950 text-sm mt-0.5">112 (Acil Çağrı Merkezi)</p>
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+                <span className="text-slate-500 font-semibold block uppercase text-[10px]">Registered Postal Address</span>
+                <p className="font-medium text-slate-900 leading-relaxed">{activeComplex.Address}</p>
               </div>
-              <span className="px-2.5 py-1 bg-red-600 text-white rounded-lg text-xs font-bold">
-                112
-              </span>
             </div>
           </div>
-        </div>
 
-      </div>
+          {/* Child Buildings List for Active Complex */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Layers className="w-5 h-5 text-teal-600" />
+                <h3 className="font-bold text-slate-900 text-base">
+                  Buildings Belonging to {activeComplex.ComplexName} ({activeBuildings.length})
+                </h3>
+              </div>
+              {onNavigateToBuildings && (
+                <button
+                  onClick={() => onNavigateToBuildings(activeComplex.ComplexID)}
+                  className="text-xs font-bold text-teal-700 hover:text-teal-900 inline-flex items-center"
+                >
+                  View All in Buildings Tab
+                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </button>
+              )}
+            </div>
 
-      {/* Photo Media Gallery */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-slate-900">
-            <ImageIcon className="w-5 h-5 text-teal-600" />
-            <h3 className="font-bold text-base">{t.photoGallery}</h3>
+            {activeBuildings.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {activeBuildings.map((b) => (
+                  <div key={b.BuildingID} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-slate-900">{b.BuildingName}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">BuildingID: {b.BuildingID}</div>
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      {new Date(b.ChangeDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                No buildings have been created for this complex yet. Go to the Buildings tab to add building blocks.
+              </div>
+            )}
           </div>
-          <span className="text-xs font-semibold text-slate-500">{complex.galleryPhotos.length} Images</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {complex.galleryPhotos.map((photo, index) => (
-            <div
-              key={index}
-              onClick={() => setActivePhotoModal(photo)}
-              className="group relative rounded-xl overflow-hidden aspect-4/3 bg-slate-100 cursor-pointer shadow-2xs hover:shadow-md transition-all"
+      ) : (
+        <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs space-y-4">
+          <Landmark className="w-12 h-12 text-slate-300 mx-auto" />
+          <h3 className="text-base font-bold text-slate-800">No Complex Found</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            There are currently no complex records in the database. Click "Add Complex" to create the first record.
+          </p>
+          {canManage && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl"
             >
-              <img
-                src={photo}
-                alt={`Complex amenity ${index + 1}`}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/30 transition-colors flex items-center justify-center">
-                <span className="opacity-0 group-hover:opacity-100 bg-white/90 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-lg transition-opacity">
-                  {t.view}
-                </span>
-              </div>
-            </div>
-          ))}
+              <Plus className="w-4 h-4 mr-1.5" />
+              Add First Complex
+            </button>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Edit Modal */}
-      {isEditing && (
+      {/* Add Complex Modal */}
+      {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl border border-slate-200">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
-              <h3 className="text-lg font-bold text-slate-900">{t.editComplexDetails}</h3>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-bold text-slate-900">Add New Complex</h3>
               <button
-                onClick={() => setIsEditing(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSave} className="space-y-4 pt-4 text-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Complex Display Name</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Native Name (Turkish)</label>
-                  <input
-                    type="text"
-                    value={formData.nativeName}
-                    onChange={(e) => setFormData({ ...formData, nativeName: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Number (VKN)</label>
-                  <input
-                    type="text"
-                    value={formData.taxNumber}
-                    onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tax Office</label>
-                  <input
-                    type="text"
-                    value={formData.taxOffice}
-                    onChange={(e) => setFormData({ ...formData, taxOffice: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Bank Name & Branch</label>
-                  <input
-                    type="text"
-                    value={formData.bankName}
-                    onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Official Site IBAN</label>
-                  <input
-                    type="text"
-                    value={formData.iban}
-                    onChange={(e) => setFormData({ ...formData, iban: e.target.value })}
-                    className="w-full px-3 py-2 font-mono font-bold border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Address</label>
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                    required
-                  />
-                </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Complex Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={addForm.ComplexName}
+                  onChange={(e) => setAddForm({ ...addForm, ComplexName: e.target.value })}
+                  placeholder="e.g. Akdeniz Royal Residence"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  required
+                />
               </div>
 
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Address <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={addForm.Address}
+                  onChange={(e) => setAddForm({ ...addForm, Address: e.target.value })}
+                  placeholder="e.g. Mahmutlar Mah. Barbaros Cad. No: 142, Alanya / Antalya"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Change User ID
+                </label>
+                <input
+                  type="text"
+                  value={addForm.ChangeUserID}
+                  onChange={(e) => setAddForm({ ...addForm, ChangeUserID: e.target.value })}
+                  placeholder="admin_user"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-medium"
+                  onClick={() => setIsAddModalOpen(false)}
+                  disabled={submitting}
+                  className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-semibold shadow-xs"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-bold shadow-xs flex items-center"
                 >
-                  {t.save}
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Create Complex'
+                  )}
                 </button>
               </div>
             </form>
@@ -378,25 +566,151 @@ export const ComplexView: React.FC<ComplexViewProps> = ({
         </div>
       )}
 
-      {/* Fullscreen Photo Lightbox */}
-      {activePhotoModal && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setActivePhotoModal(null)}
-        >
-          <div className="relative max-w-4xl w-full" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={activePhotoModal}
-              alt="Expanded view"
-              className="w-full max-h-[85vh] object-contain rounded-xl"
-              referrerPolicy="no-referrer"
-            />
-            <button
-              onClick={() => setActivePhotoModal(null)}
-              className="absolute top-3 right-3 bg-black/60 hover:bg-black text-white p-2 rounded-full transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
+      {/* Edit Complex Modal */}
+      {editingComplex && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="text-base font-bold text-slate-900">
+                Edit Complex (ID: {editingComplex.ComplexID})
+              </h3>
+              <button
+                onClick={() => setEditingComplex(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
+              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 pt-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Complex Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editForm.ComplexName}
+                  onChange={(e) => setEditForm({ ...editForm, ComplexName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Address <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.Address}
+                  onChange={(e) => setEditForm({ ...editForm, Address: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Change User ID
+                </label>
+                <input
+                  type="text"
+                  value={editForm.ChangeUserID}
+                  onChange={(e) => setEditForm({ ...editForm, ChangeUserID: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingComplex(null)}
+                  disabled={submitting}
+                  className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-bold shadow-xs flex items-center"
+                >
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Complex Confirmation Modal */}
+      {deletingComplex && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 text-sm animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3 text-red-600 pb-3 border-b border-slate-200">
+              <AlertTriangle className="w-6 h-6" />
+              <h3 className="text-base font-bold text-slate-900">Confirm Deletion</h3>
+            </div>
+
+            {formError && (
+              <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                {formError}
+              </div>
+            )}
+
+            <div className="py-4 space-y-3">
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Are you sure you want to delete <strong className="text-slate-900">{deletingComplex.ComplexName}</strong> (ID: {deletingComplex.ComplexID})?
+              </p>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 space-y-1">
+                <span className="font-bold flex items-center">
+                  <ShieldAlert className="w-4 h-4 mr-1 text-red-600" />
+                  Cascade Delete Warning:
+                </span>
+                <p>
+                  Deleting this complex will also permanently delete all associated buildings in PostgreSQL.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeletingComplex(null)}
+                disabled={submitting}
+                className="px-3.5 py-2 text-xs text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 font-semibold"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={submitting}
+                className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-xs flex items-center"
+              >
+                {submitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Yes, Delete Complex'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
