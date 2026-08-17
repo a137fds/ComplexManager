@@ -1,6 +1,8 @@
 name: Cleanup client ChangeUserID fields
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +21,6 @@ jobs:
           from pathlib import Path
           import re
 
-          # BuildingsView: remove ChangeUserID from client form state, handlers, and both modals.
           p = Path('src/components/BuildingsView.tsx')
           s = p.read_text()
           s = s.replace("onCreateBuilding: (data: { ComplexID: number; BuildingName: string; ChangeUserID?: string })", "onCreateBuilding: (data: { ComplexID: number; BuildingName: string })")
@@ -32,7 +33,6 @@ jobs:
           s = re.sub(r"\n\s*<div>\s*<label className=\"block text-xs font-semibold text-slate-700 mb-1\">\s*Change User ID.*?</div>", "", s, flags=re.S)
           p.write_text(s)
 
-          # CloudSqlCrudView: remove ChangeUserID from the old CRUD forms as well.
           p = Path('src/components/CloudSqlCrudView.tsx')
           s = p.read_text()
           s = re.sub(r"\n\s*changeUserId: '',", "", s)
@@ -43,16 +43,13 @@ jobs:
           s = re.sub(r"\n\s*<div>\s*<label[^>]*>\s*Change User ID.*?</div>", "", s, flags=re.S)
           p.write_text(s)
 
-          # databaseApi: never send a client-supplied ChangeUserID. The server derives it from auth.uid().
           p = Path('src/api/databaseApi.ts')
           s = p.read_text()
-          s = re.sub(r"; ChangeUserID\?: string; changeUserId\?: string", "", s)
           s = re.sub(r"; ChangeUserID\?: string; changeUserId\?: string", "", s)
           s = re.sub(r", ChangeUserID: data\.ChangeUserID \|\| data\.changeUserId", "", s)
           s = re.sub(r", ChangeUserID: data\.ChangeUserID \?\? data\.changeUserId", "", s)
           p.write_text(s)
 
-          # Remove this one-time workflow after it performs the cleanup.
           Path('.github/workflows/cleanup-change-user-id.yml').unlink()
           PY
 
