@@ -62,7 +62,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
   const [complexForm, setComplexForm] = useState({
     complexName: '',
     address: '',
-    changeUserId: '',
   });
 
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState<boolean>(false);
@@ -70,7 +69,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
   const [buildingForm, setBuildingForm] = useState({
     complexId: '',
     buildingName: '',
-    changeUserId: '',
   });
 
   // Delete Confirmation State
@@ -175,7 +173,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
     setComplexForm({
       complexName: '',
       address: '',
-      changeUserId: currentUser?.email || currentUser?.uid || 'admin_user',
     });
     setIsComplexModalOpen(true);
   };
@@ -185,7 +182,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
     setComplexForm({
       complexName: item.complexName,
       address: item.address,
-      changeUserId: currentUser?.email || currentUser?.uid || item.changeUserId || 'admin_user',
     });
     setIsComplexModalOpen(true);
   };
@@ -205,7 +201,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
         const updated = await databaseApi.updateComplex(editingComplex.complexId, {
           complexName: complexForm.complexName,
           address: complexForm.address,
-          changeUserId: complexForm.changeUserId,
         });
         notifySuccess(`Complex #${updated.complexId} (${updated.complexName}) updated successfully`);
         if (onAuditLog) {
@@ -216,7 +211,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
         const created = await databaseApi.createComplex({
           complexName: complexForm.complexName,
           address: complexForm.address,
-          changeUserId: complexForm.changeUserId,
         });
         notifySuccess(`Complex #${created.complexId} (${created.complexName}) created successfully`);
         if (onAuditLog) {
@@ -241,7 +235,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
     setBuildingForm({
       complexId: String(initialComplex),
       buildingName: '',
-      changeUserId: currentUser?.email || currentUser?.uid || 'admin_user',
     });
     setIsBuildingModalOpen(true);
   };
@@ -251,7 +244,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
     setBuildingForm({
       complexId: String(item.complexId),
       buildingName: item.buildingName,
-      changeUserId: currentUser?.email || currentUser?.uid || item.changeUserId || 'admin_user',
     });
     setIsBuildingModalOpen(true);
   };
@@ -277,7 +269,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
         const updated = await databaseApi.updateBuilding(editingBuilding.buildingId, {
           complexId: numericComplexId,
           buildingName: buildingForm.buildingName,
-          changeUserId: buildingForm.changeUserId,
         });
         notifySuccess(`Building #${updated.buildingId} (${updated.buildingName}) updated successfully`);
         if (onAuditLog) {
@@ -288,7 +279,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
         const created = await databaseApi.createBuilding({
           complexId: numericComplexId,
           buildingName: buildingForm.buildingName,
-          changeUserId: buildingForm.changeUserId,
         });
         notifySuccess(`Building #${created.buildingId} (${created.buildingName}) created successfully`);
         if (onAuditLog) {
@@ -1093,22 +1083,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Change User ID (<span className="font-mono text-slate-500">ChangeUserID</span>)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. user email or admin_user"
-                  value={complexForm.changeUserId}
-                  onChange={(e) => setComplexForm({ ...complexForm, changeUserId: e.target.value })}
-                  className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  <span className="font-mono">ChangeDate</span> is automatically stamped to current PostgreSQL timestamp upon saving.
-                </p>
-              </div>
-
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button
                   type="button"
@@ -1185,19 +1159,6 @@ export const CloudSqlCrudView: React.FC<CloudSqlCrudViewProps> = ({
                   value={buildingForm.buildingName}
                   onChange={(e) => setBuildingForm({ ...buildingForm, buildingName: e.target.value })}
                   className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Change User ID (<span className="font-mono text-slate-500">ChangeUserID</span>)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. user email or admin_user"
-                  value={buildingForm.changeUserId}
-                  onChange={(e) => setBuildingForm({ ...buildingForm, changeUserId: e.target.value })}
-                  className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
                 />
               </div>
 

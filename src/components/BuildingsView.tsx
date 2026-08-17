@@ -25,8 +25,8 @@ interface BuildingsViewProps {
   complexes: ComplexEntity[];
   selectedComplexFilter: number | 'all';
   onSelectComplexFilter: (id: number | 'all') => void;
-  onCreateBuilding: (data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => Promise<void>;
-  onUpdateBuilding: (id: number, data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => Promise<void>;
+  onCreateBuilding: (data: { ComplexID: number; BuildingName: string }) => Promise<void>;
+  onUpdateBuilding: (id: number, data: { ComplexID: number; BuildingName: string }) => Promise<void>;
   onDeleteBuilding: (id: number) => Promise<void>;
   onRefresh: () => void;
   loading: boolean;
@@ -64,13 +64,11 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
   const [addForm, setAddForm] = useState({
     ComplexID: complexes[0]?.ComplexID || 1,
     BuildingName: '',
-    ChangeUserID: currentRole || 'admin_user',
   });
 
   const [editForm, setEditForm] = useState({
     ComplexID: 1,
     BuildingName: '',
-    ChangeUserID: '',
   });
 
   // Filter buildings by selected complex and search term
@@ -93,7 +91,6 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
     setAddForm({
       ComplexID: defaultComplexId,
       BuildingName: '',
-      ChangeUserID: currentRole || 'admin_user',
     });
     setFormError(null);
     setIsAddModalOpen(true);
@@ -104,7 +101,6 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
     setEditForm({
       ComplexID: building.ComplexID,
       BuildingName: building.BuildingName,
-      ChangeUserID: currentRole || building.ChangeUserID || 'admin_user',
     });
     setFormError(null);
   };
@@ -126,13 +122,11 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
       await onCreateBuilding({
         ComplexID: Number(addForm.ComplexID),
         BuildingName: addForm.BuildingName.trim(),
-        ChangeUserID: addForm.ChangeUserID || currentRole || 'admin_user',
       });
       setIsAddModalOpen(false);
       setAddForm({
         ComplexID: complexes[0]?.ComplexID || 1,
         BuildingName: '',
-        ChangeUserID: currentRole || 'admin_user',
       });
     } catch (err: any) {
       setFormError(err.message || 'Failed to create building');
@@ -159,7 +153,6 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
       await onUpdateBuilding(editingBuilding.BuildingID, {
         ComplexID: Number(editForm.ComplexID),
         BuildingName: editForm.BuildingName.trim(),
-        ChangeUserID: editForm.ChangeUserID || currentRole || 'admin_user',
       });
       setEditingBuilding(null);
     } catch (err: any) {
@@ -436,19 +429,6 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Change User ID
-                </label>
-                <input
-                  type="text"
-                  value={addForm.ChangeUserID}
-                  onChange={(e) => setAddForm({ ...addForm, ChangeUserID: e.target.value })}
-                  placeholder="admin_user"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
-                />
-              </div>
-
               <div className="flex justify-end space-x-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
@@ -529,18 +509,6 @@ export const BuildingsView: React.FC<BuildingsViewProps> = ({
                   onChange={(e) => setEditForm({ ...editForm, BuildingName: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-teal-500 focus:outline-none"
                   required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Change User ID
-                </label>
-                <input
-                  type="text"
-                  value={editForm.ChangeUserID}
-                  onChange={(e) => setEditForm({ ...editForm, ChangeUserID: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
                 />
               </div>
 
