@@ -2,12 +2,30 @@
 
 A web application for managing a residential complex (site) in Türkiye.
 
-## Purpose
+## Architecture
 
-ComplexManager is designed for the residential complex itself, not for a management company. The management company is one of the system roles and operates within permissions granted by the complex.
+- **Frontend:** React + TypeScript + Vite
+- **Hosting:** GitHub Pages
+- **Backend/API:** Supabase Edge Functions
+- **Database:** Supabase PostgreSQL
 
-## Project Status
+The frontend is a static Vite build. It contains no server secrets and does not run a Node/Express server. Database operations are performed through the Supabase API layer.
 
-The project is currently in the requirements and specification phase.
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+Build the static site with:
+
+```bash
+npm run build
+```
+
+The GitHub Pages deployment workflow builds `dist/` automatically on pushes to `main`.
+
+## Project specification
 
 The main technical specification is maintained in [`SPEC.md`](./SPEC.md).
