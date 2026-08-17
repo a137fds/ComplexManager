@@ -1,5 +1,3 @@
-import { auth } from '../lib/firebase.ts';
-
 export interface ComplexEntity {
   ComplexID: number;
   ComplexName: string;
@@ -8,8 +6,6 @@ export interface ComplexEntity {
   ChangeDate: string;
   buildingCount?: number;
   buildings?: BuildingEntity[];
-
-  // Normalized helper aliases for UI bindings
   complexId: number;
   complexName: string;
   address: string;
@@ -25,8 +21,6 @@ export interface BuildingEntity {
   ChangeDate: string;
   ComplexName?: string;
   Address?: string;
-
-  // Normalized helper aliases for UI bindings
   buildingId: number;
   complexId: number;
   buildingName: string;
@@ -43,23 +37,27 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-// Get authorization headers if Firebase user is logged in
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+// The frontend is static and cannot contain server secrets. All database
+// operations will go through the Supabase Edge Function API configured here.
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://tntoxgpemvitpqkjxdki.supabase.co/functions/v1/api'
+).replace(/\/$/, '');
 
-  try {
-    const currentUser = auth.currentUser;
-    if (currentUser) {
-      const token = await currentUser.getIdToken();
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  } catch (err) {
-    console.warn('Could not acquire Firebase token:', err);
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options?.headers || {}),
+    },
+  });
+
+  const json = await response.json();
+  if (!response.ok) {
+    throw new Error(json?.error || `API request failed (${response.status})`);
   }
-
-  return headers;
+  return json as T;
 }
 
 function normalizeComplex(item: any): ComplexEntity {
@@ -115,196 +113,110 @@ function normalizeBuilding(item: any): BuildingEntity {
 }
 
 export const databaseApi = {
-  // Check backend & database health
   async checkHealth() {
-    const res = await fetch('/api/health');
-    return res.json();
+    return request<ApiResponse<{ status: string }>>('/health');
   },
 
-  // Seed initial demo data
   async seedDemo() {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/seed', {
-      method: 'POST',
-      headers,
-    });
-    return res.json() as Promise<ApiResponse<any>>;
+    return request<ApiResponse<any>>('/seed', { method: 'POST' });
   },
 
-  // --------------------------------------------------
-  // Complex CRUD API
-  // --------------------------------------------------
   async getComplexes(): Promise<ComplexEntity[]> {
-    const res = await fetch('/api/complexes');
-    const json: ApiResponse<any[]> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to fetch complexes');
-    }
+    const json = await request<ApiResponse<any[]>>('/complexes');
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to fetch complexes');
     return json.data.map(normalizeComplex);
   },
 
   async getComplexById(id: number): Promise<ComplexEntity> {
-    const res = await fetch(`/api/complexes/${id}`);
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to fetch complex');
-    }
+    const json = await request<ApiResponse<any>>(`/complexes/${id}`);
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to fetch complex');
     return normalizeComplex(json.data);
   },
 
   async createComplex(data: {
-    ComplexName?: string;
-    complexName?: string;
-    Address?: string;
-    address?: string;
-    ChangeUserID?: string;
-    changeUserId?: string;
+    ComplexName?: string; complexName?: string; Address?: string; address?: string;
+    ChangeUserID?: string; changeUserId?: string;
   }): Promise<ComplexEntity> {
-    const payload = {
-      ComplexName: data.ComplexName || data.complexName || '',
-      Address: data.Address || data.address || '',
-      ChangeUserID: data.ChangeUserID || data.changeUserId,
-    };
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/complexes', {
+    const json = await request<ApiResponse<any>>('/complexes', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ComplexName: data.ComplexName || data.complexName || '',
+        Address: data.Address || data.address || '',
+        ChangeUserID: data.ChangeUserID || data.changeUserId,
+      }),
     });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to create complex');
-    }
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to create complex');
     return normalizeComplex(json.data);
   },
 
-  async updateComplex(
-    id: number,
-    data: {
-      ComplexName?: string;
-      complexName?: string;
-      Address?: string;
-      address?: string;
-      ChangeUserID?: string;
-      changeUserId?: string;
-    }
-  ): Promise<ComplexEntity> {
-    const payload = {
-      ComplexName: data.ComplexName ?? data.complexName,
-      Address: data.Address ?? data.address,
-      ChangeUserID: data.ChangeUserID ?? data.changeUserId,
-    };
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/complexes/${id}`, {
+  async updateComplex(id: number, data: {
+    ComplexName?: string; complexName?: string; Address?: string; address?: string;
+    ChangeUserID?: string; changeUserId?: string;
+  }): Promise<ComplexEntity> {
+    const json = await request<ApiResponse<any>>(`/complexes/${id}`, {
       method: 'PUT',
-      headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ComplexName: data.ComplexName ?? data.complexName,
+        Address: data.Address ?? data.address,
+        ChangeUserID: data.ChangeUserID ?? data.changeUserId,
+      }),
     });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to update complex');
-    }
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to update complex');
     return normalizeComplex(json.data);
   },
 
   async deleteComplex(id: number): Promise<void> {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/complexes/${id}`, {
-      method: 'DELETE',
-      headers,
-    });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Failed to delete complex');
-    }
+    const json = await request<ApiResponse<any>>(`/complexes/${id}`, { method: 'DELETE' });
+    if (!json.success) throw new Error(json.error || 'Failed to delete complex');
   },
 
-  // --------------------------------------------------
-  // Building CRUD API
-  // --------------------------------------------------
   async getBuildings(complexId?: number): Promise<BuildingEntity[]> {
-    const url = complexId ? `/api/buildings?ComplexID=${complexId}` : '/api/buildings';
-    const res = await fetch(url);
-    const json: ApiResponse<any[]> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to fetch buildings');
-    }
+    const query = complexId ? `?ComplexID=${encodeURIComponent(complexId)}` : '';
+    const json = await request<ApiResponse<any[]>>(`/buildings${query}`);
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to fetch buildings');
     return json.data.map(normalizeBuilding);
   },
 
   async getBuildingById(id: number): Promise<BuildingEntity> {
-    const res = await fetch(`/api/buildings/${id}`);
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to fetch building');
-    }
+    const json = await request<ApiResponse<any>>(`/buildings/${id}`);
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to fetch building');
     return normalizeBuilding(json.data);
   },
 
   async createBuilding(data: {
-    ComplexID?: number;
-    complexId?: number;
-    BuildingName?: string;
-    buildingName?: string;
-    ChangeUserID?: string;
-    changeUserId?: string;
+    ComplexID?: number; complexId?: number; BuildingName?: string; buildingName?: string;
+    ChangeUserID?: string; changeUserId?: string;
   }): Promise<BuildingEntity> {
-    const payload = {
-      ComplexID: data.ComplexID ?? data.complexId,
-      BuildingName: data.BuildingName || data.buildingName || '',
-      ChangeUserID: data.ChangeUserID || data.changeUserId,
-    };
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/buildings', {
+    const json = await request<ApiResponse<any>>('/buildings', {
       method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ComplexID: data.ComplexID ?? data.complexId,
+        BuildingName: data.BuildingName || data.buildingName || '',
+        ChangeUserID: data.ChangeUserID || data.changeUserId,
+      }),
     });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to create building');
-    }
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to create building');
     return normalizeBuilding(json.data);
   },
 
-  async updateBuilding(
-    id: number,
-    data: {
-      ComplexID?: number;
-      complexId?: number;
-      BuildingName?: string;
-      buildingName?: string;
-      ChangeUserID?: string;
-      changeUserId?: string;
-    }
-  ): Promise<BuildingEntity> {
-    const payload = {
-      ComplexID: data.ComplexID ?? data.complexId,
-      BuildingName: data.BuildingName ?? data.buildingName,
-      ChangeUserID: data.ChangeUserID ?? data.changeUserId,
-    };
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/buildings/${id}`, {
+  async updateBuilding(id: number, data: {
+    ComplexID?: number; complexId?: number; BuildingName?: string; buildingName?: string;
+    ChangeUserID?: string; changeUserId?: string;
+  }): Promise<BuildingEntity> {
+    const json = await request<ApiResponse<any>>(`/buildings/${id}`, {
       method: 'PUT',
-      headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ComplexID: data.ComplexID ?? data.complexId,
+        BuildingName: data.BuildingName ?? data.buildingName,
+        ChangeUserID: data.ChangeUserID ?? data.changeUserId,
+      }),
     });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'Failed to update building');
-    }
+    if (!json.success || !json.data) throw new Error(json.error || 'Failed to update building');
     return normalizeBuilding(json.data);
   },
 
   async deleteBuilding(id: number): Promise<void> {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/buildings/${id}`, {
-      method: 'DELETE',
-      headers,
-    });
-    const json: ApiResponse<any> = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Failed to delete building');
-    }
+    const json = await request<ApiResponse<any>>(`/buildings/${id}`, { method: 'DELETE' });
+    if (!json.success) throw new Error(json.error || 'Failed to delete building');
   },
 };
