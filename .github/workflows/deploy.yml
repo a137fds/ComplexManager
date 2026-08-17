@@ -37,6 +37,7 @@ jobs:
         env:
           VITE_API_BASE_URL: https://tntoxgpemvitpqkjxdki.supabase.co/functions/v1/api
           VITE_SUPABASE_URL: https://tntoxgpemvitpqkjxdki.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
