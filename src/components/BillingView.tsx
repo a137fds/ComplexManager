@@ -40,11 +40,11 @@ export const BillingView: React.FC<BillingViewProps> = ({ annualCharges, payment
 
   const sendToAll = async (charge: AnnualCharge) => {
     if (!canManageCharges) return;
-    const { data: apartments, error } = await supabase.from('apartments').select('id,apartment_number,building_id,apartment_owners(user_id,user_profiles(first_name,last_name)),invoice_recipients(user_id)');
+    const { data: apartments, error } = await supabase.from('apartments').select('id,apartment_number,building_id,apartment_owner(user_id,owners(first_name,last_name)),invoice_recipients(user_id)');
     if (error) { setMessage(error.message); return; }
     const existing = new Set(invoices.filter(i => i.year === charge.year).map(i => i.apartmentId));
     const rows = (apartments || []).filter((a: any) => !existing.has(a.id)).map((a: any) => {
-      const payerNames = (a.apartment_owners || []).map((o: any) => `${o.user_profiles?.first_name || ''} ${o.user_profiles?.last_name || ''}`.trim()).filter(Boolean);
+      const payerNames = (a.apartment_owner || []).map((o: any) => `${o.owners?.first_name || ''} ${o.owners?.last_name || ''}`.trim()).filter(Boolean);
       return { invoice_number: `INV-${charge.year}-${a.id}`, apartment_id: a.id, billing_year: charge.year, amount: charge.amount, currency: charge.currency, status: 'unpaid', issue_date: new Date().toISOString().slice(0,10), due_date: `${charge.year}-03-31`, title: charge.title, description: charge.description, paid_amount: 0, payer_names: payerNames };
     });
     if (!rows.length) { setMessage(apartmentCount ? 'All apartments already have an invoice for this year.' : 'No apartments are configured yet. Add apartments before issuing invoices.'); return; }
