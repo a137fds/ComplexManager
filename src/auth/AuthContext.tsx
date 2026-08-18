@@ -23,6 +23,8 @@ export interface UserProfile {
 interface AuthContextValue {
   session: Session | null;
   profile: UserProfile | null;
+  permissions: string[];
+  hasPermission: (code: string) => boolean;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -32,6 +34,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       if (!currentSession) {
         if (active) {
           setProfile(null);
+          setPermissions([]);
           setLoading(false);
         }
         return;
@@ -57,11 +61,50 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       if (error) {
         console.error('Failed to load user profile:', error);
         setProfile(null);
+        setPermissions([]);
       } else {
-        setProfile({
+        const nextProfile = {
           ...(data as UserProfile),
           default_language: data.default_language || 'en',
-        });
+        };
+        setProfile(nextProfile);
+
+        const { data: roleRow, error: roleError } = await supabase
+          .from('roles')
+          .select('id')
+          .eq('code', nextProfile.role)
+          .maybeSingle();
+
+        if (roleError || !roleRow) {
+          if (roleError) console.error('Failed to load role:', roleError);
+          setPermissions([]);
+        } else {
+          const { data: rolePermissions, error: permissionError } = await supabase
+            .from('role_permissions')
+            .select('permission_id')
+            .eq('role_id', roleRow.id);
+
+          if (permissionError) {
+            console.error('Failed to load role permissions:', permissionError);
+            setPermissions([]);
+          } else {
+            const permissionIds = (rolePermissions || []).map(row => row.permission_id);
+            if (permissionIds.length === 0) {
+              setPermissions([]);
+            } else {
+              const { data: permissionRows, error: permissionsError } = await supabase
+                .from('permissions')
+                .select('code')
+                .in('id', permissionIds);
+              if (permissionsError) {
+                console.error('Failed to load permissions:', permissionsError);
+                setPermissions([]);
+              } else {
+                setPermissions((permissionRows || []).map(row => row.code));
+              }
+            }
+          }
+        }
       }
       setLoading(false);
     };
@@ -86,12 +129,14 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const value = useMemo(() => ({
     session,
     profile,
+    permissions,
+    hasPermission: (code: string) => permissions.includes(code),
     loading,
     signOut: async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     },
-  }), [session, profile, loading]);
+  }), [session, profile, permissions, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
