@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Layers } from 'lucide-react';
+import { Building2, Layers, LoaderCircle } from 'lucide-react';
 import { Language } from '../types';
 import { ComplexEntity, BuildingEntity } from '../api/databaseApi';
 
@@ -7,6 +7,7 @@ interface StartPageProps {
   complexes: ComplexEntity[];
   buildings: BuildingEntity[];
   currentLang: Language;
+  loading: boolean;
   onOpenComplexes: () => void;
   onOpenBuildings: () => void;
 }
@@ -21,7 +22,7 @@ const labels: Record<Language, { title: string; subtitle: string; complexes: str
   pl: { title: 'Przegląd', subtitle: 'Przegląd obszaru zarządzania kompleksem.', complexes: 'Kompleksy (Site)', buildings: 'Budynki', open: 'Otwórz' }
 };
 
-export const StartPage: React.FC<StartPageProps> = ({ complexes, buildings, currentLang, onOpenComplexes, onOpenBuildings }) => {
+export const StartPage: React.FC<StartPageProps> = ({ complexes, buildings, currentLang, loading, onOpenComplexes, onOpenBuildings }) => {
   const t = labels[currentLang];
   const cards = [
     { label: t.complexes, count: complexes.length, icon: Building2, onClick: onOpenComplexes },
@@ -36,12 +37,14 @@ export const StartPage: React.FC<StartPageProps> = ({ complexes, buildings, curr
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
       {cards.map(card => {
         const Icon = card.icon;
-        return <button key={card.label} type="button" onClick={card.onClick} className="group text-left rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-teal-300 transition-all">
+        return <button key={card.label} type="button" onClick={card.onClick} disabled={loading} className="group text-left rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-teal-300 transition-all disabled:cursor-default disabled:hover:shadow-sm disabled:hover:border-slate-200">
           <div className="flex items-start justify-between">
             <div className="rounded-xl bg-teal-50 p-3"><Icon className="w-6 h-6 text-teal-700" /></div>
-            <span className="text-xs font-semibold text-teal-700 opacity-0 group-hover:opacity-100 transition-opacity">{t.open} →</span>
+            {!loading && <span className="text-xs font-semibold text-teal-700 opacity-0 group-hover:opacity-100 transition-opacity">{t.open} →</span>}
           </div>
-          <div className="mt-5 text-4xl font-bold text-slate-900">{card.count}</div>
+          <div className="mt-5 text-4xl font-bold text-slate-900 min-h-10 flex items-center">
+            {loading ? <LoaderCircle className="w-8 h-8 animate-spin text-slate-400" aria-label="Loading" /> : card.count}
+          </div>
           <div className="mt-1 text-sm font-semibold text-slate-600">{card.label}</div>
         </button>;
       })}
