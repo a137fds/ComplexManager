@@ -77,8 +77,7 @@ export const ComplexView: React.FC<ComplexViewProps> = ({ complexes, selectedCom
     <div className="space-y-6">
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2"><h2 className="text-xl font-bold text-slate-900">{t.complexTitle}</h2><span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">PostgreSQL</span></div>
-          <p className="text-xs text-slate-500 mt-1">Real-time residential complex records stored in PostgreSQL database.</p>
+          <h2 className="text-xl font-bold text-slate-900">{t.complexTitle}</h2>
         </div>
         <div className="flex items-center space-x-3 shrink-0">
           <button id="refresh-complexes-btn" onClick={onRefresh} disabled={loading} className="p-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition-colors" title="Refresh database records"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
