@@ -1,23 +1,27 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Home, Search, UserRound } from 'lucide-react';
-import { Language, UserRole, Resident, Invoice, Payment } from '../types';
+import React, { useEffect, useState } from 'react';
+import { Apartment, ApartmentOwner, Building, Language, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
+import { ApartmentsView } from './ApartmentsView';
 
-interface ApartmentOwner { user_id: string; first_name: string; last_name: string; email: string | null; }
-interface Apartment { id: number; building_id: number; apartment_number: string; building_name: string; owners: ApartmentOwner[]; }
-interface ApartmentsViewProps { residents: Resident[]; invoices: Invoice[]; payments: Payment[]; onRecordPayment: (payment: Partial<Payment>) => void; onOpenInvoiceModal: (invoice: Invoice) => void; currentRole: UserRole; currentLang: Language; }
-const labels: Record<Language, { title:string; subtitle:string; search:string; building:string; apartment:string; owners:string; noOwners:string; loading:string; empty:string }> = {
-  en:{title:'Apartments',subtitle:'Apartments and their registered owners',search:'Search by apartment, building or owner...',building:'Building',apartment:'Apartment',owners:'Owners',noOwners:'No owners registered',loading:'Loading apartments...',empty:'No apartments found'},
-  ru:{title:'Квартиры',subtitle:'Квартиры и зарегистрированные собственники',search:'Поиск по квартире, зданию или собственнику...',building:'Здание',apartment:'Квартира',owners:'Собственники',noOwners:'Собственники не зарегистрированы',loading:'Загрузка квартир...',empty:'Квартиры не найдены'},
-  tr:{title:'Daireler',subtitle:'Daireler ve kayıtlı malikler',search:'Daire, bina veya malik ara...',building:'Bina',apartment:'Daire',owners:'Malikler',noOwners:'Kayıtlı malik yok',loading:'Daireler yükleniyor...',empty:'Daire bulunamadı'},
-  fr:{title:'Appartements',subtitle:'Appartements et propriétaires enregistrés',search:'Rechercher par appartement, bâtiment ou propriétaire...',building:'Bâtiment',apartment:'Appartement',owners:'Propriétaires',noOwners:'Aucun propriétaire enregistré',loading:'Chargement des appartements...',empty:'Aucun appartement trouvé'},
-  da:{title:'Lejligheder',subtitle:'Lejligheder og registrerede ejere',search:'Søg efter lejlighed, bygning eller ejer...',building:'Bygning',apartment:'Lejlighed',owners:'Ejere',noOwners:'Ingen ejere registreret',loading:'Indlæser lejligheder...',empty:'Ingen lejligheder fundet'},
-  sv:{title:'Lägenheter',subtitle:'Lägenheter och registrerade ägare',search:'Sök efter lägenhet, byggnad eller ägare...',building:'Byggnad',apartment:'Lägenhet',owners:'Ägare',noOwners:'Inga ägare registrerade',loading:'Laddar lägenheter...',empty:'Inga lägenheter hittades'},
-  pl:{title:'Mieszkania',subtitle:'Mieszkania i zarejestrowani właściciele',search:'Szukaj po mieszkaniu, budynku lub właścicielu...',building:'Budynek',apartment:'Mieszkanie',owners:'Właściciele',noOwners:'Brak zarejestrowanych właścicieli',loading:'Ładowanie mieszkań...',empty:'Nie znaleziono mieszkań'}
-};
-export const ResidentsView: React.FC<ApartmentsViewProps> = ({ currentLang }) => {
-  const t = labels[currentLang]; const [apartments,setApartments]=useState<Apartment[]>([]); const [loading,setLoading]=useState(true); const [search,setSearch]=useState('');
-  useEffect(()=>{let cancelled=false; const load=async()=>{setLoading(true); const {data,error}=await supabase.from('apartments').select('id,building_id,apartment_number,buildings(name),apartment_owners(user_id,user_profiles(first_name,last_name,email))').order('building_id').order('apartment_number'); if(cancelled)return; if(error){console.error('Failed to load apartments:',error);setApartments([]);setLoading(false);return;} setApartments((data??[]).map((row:any)=>({id:row.id,building_id:row.building_id,apartment_number:row.apartment_number,building_name:row.buildings?.name??'—',owners:(row.apartment_owners??[]).map((link:any)=>({user_id:link.user_id,first_name:link.user_profiles?.first_name??'',last_name:link.user_profiles?.last_name??'',email:link.user_profiles?.email??null}))})));setLoading(false);};void load();return()=>{cancelled=true;};},[]);
-  const filtered=useMemo(()=>{const q=search.trim().toLowerCase();if(!q)return apartments;return apartments.filter(a=>`${a.apartment_number} ${a.building_name} ${a.owners.map(o=>`${o.first_name} ${o.last_name} ${o.email??''}`).join(' ')}`.toLowerCase().includes(q));},[apartments,search]);
-  return <div className="space-y-6"><div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs"><h2 className="text-xl font-bold text-slate-900">{t.title}</h2><p className="text-xs text-slate-500 mt-1">{t.subtitle}</p><div className="relative mt-5 max-w-xl"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.search} className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"/></div></div>{loading?<div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-sm text-slate-500">{t.loading}</div>:filtered.length===0?<div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-sm text-slate-500">{t.empty}</div>:<div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs"><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]"><tr><th className="px-4 py-3.5">{t.building}</th><th className="px-4 py-3.5">{t.apartment}</th><th className="px-4 py-3.5">{t.owners}</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(a=><tr key={a.id} className="hover:bg-slate-50/70"><td className="px-4 py-4"><div className="flex items-center gap-2"><Building2 className="w-4 h-4 text-slate-400"/><span className="font-semibold text-slate-800">{a.building_name}</span></div></td><td className="px-4 py-4"><div className="flex items-center gap-2"><Home className="w-4 h-4 text-teal-600"/><span className="font-bold text-slate-900">{a.apartment_number}</span></div></td><td className="px-4 py-4">{a.owners.length?<div className="space-y-2">{a.owners.map(o=><div key={o.user_id} className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-slate-400"/><div><div className="font-semibold text-slate-800">{`${o.first_name} ${o.last_name}`.trim()||o.email||o.user_id}</div>{o.email&&<div className="text-[10px] text-slate-500">{o.email}</div>}</div></div>)}</div>:<span className="text-slate-400">{t.noOwners}</span>}</td></tr>)}</tbody></table></div></div>}</div>;
+interface ResidentsViewProps { currentLang: Language; currentRole: UserRole; }
+
+export const ResidentsView: React.FC<ResidentsViewProps> = ({ currentLang, currentRole }) => {
+  const [apartments, setApartments] = useState<Apartment[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+
+  const load = async () => {
+    const [{ data: apartmentRows }, { data: buildingRows }] = await Promise.all([
+      supabase.from('apartments').select('id,building_id,apartment_number,buildings(name),apartment_owners(user_id,user_profiles(first_name,last_name,email,default_language)),invoice_recipients(user_id)').order('building_id').order('apartment_number'),
+      supabase.from('buildings').select('id,name').order('id')
+    ]);
+    setBuildings((buildingRows || []).map((b: any) => ({ id: String(b.id), blockCode: b.name, name: b.name, totalFloors: 0, totalUnits: 0, occupiedUnits: 0, caretakerName: '', caretakerPhone: '', elevatorCount: 0, heatingType: '', photos: [], documentsCount: 0, notes: '' })));
+    setApartments((apartmentRows || []).map((a: any) => ({
+      id: Number(a.id), buildingId: Number(a.building_id), buildingName: a.buildings?.name || '', apartmentNumber: a.apartment_number,
+      owners: (a.apartment_owners || []).map((o: any): ApartmentOwner => ({ userId: o.user_id, firstName: o.user_profiles?.first_name || '', lastName: o.user_profiles?.last_name || '', email: o.user_profiles?.email || '', defaultLanguage: o.user_profiles?.default_language || 'en' })),
+      invoiceRecipientIds: (a.invoice_recipients || []).map((r: any) => r.user_id)
+    })));
+  };
+
+  useEffect(() => { void load(); }, []);
+  return <ApartmentsView apartments={apartments} buildings={buildings} currentRole={currentRole} currentLang={currentLang} onRefresh={load} />;
 };
