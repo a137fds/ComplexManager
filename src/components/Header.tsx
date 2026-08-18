@@ -38,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({ complex, currentLang, onLangChan
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-tight">{complex.name}</h1>
                 <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">{complex.district}, {complex.city}</span>
               </div>
-              <p className="text-xs text-slate-500 font-medium">{complex.nativeName} • {complex.totalBlocks} Blocks / {complex.totalUnits} Units</p>
+              <p className="text-xs text-slate-500 font-medium">{complex.nativeName} • {complex.totalBlocks} {t.buildingsTitle} / {complex.totalUnits} {t.unitsCount}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2 sm:space-x-4">
@@ -49,9 +49,9 @@ export const Header: React.FC<HeaderProps> = ({ complex, currentLang, onLangChan
               </select>
             </div>
             {pendingAuditsCount > 0 && (
-              <div title={`${pendingAuditsCount} task(s) awaiting financial inspection/approval`} className="hidden lg:flex items-center space-x-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs font-semibold">
+              <div title={`${pendingAuditsCount} ${t.auditPending.toLowerCase()}`} className="hidden lg:flex items-center space-x-1 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs font-semibold">
                 <Bell className="w-3.5 h-3.5 text-amber-600" />
-                <span>{pendingAuditsCount} Action{pendingAuditsCount > 1 ? 's' : ''}</span>
+                <span>{pendingAuditsCount} {t.actions}</span>
               </div>
             )}
           </div>
