@@ -12,9 +12,9 @@ export const ResidentsView: React.FC<ResidentsViewProps> = ({ currentLang, curre
     const [apartmentsResult, buildingsResult, ownersResult, recipientsResult, usersResult] = await Promise.all([
       supabase.from('apartments').select('id,building_id,apartment_number').order('building_id').order('apartment_number'),
       supabase.from('buildings').select('id,name').order('id'),
-      supabase.from('apartment_owners').select('apartment_id,user_id'),
+      supabase.from('apartment_owner').select('apartment_id,user_id'),
       supabase.from('invoice_recipients').select('apartment_id,user_id'),
-      supabase.from('user_profiles').select('id,first_name,last_name,email,default_language').order('last_name')
+      supabase.from('owners').select('id,first_name,last_name,email,default_language').order('last_name')
     ]);
     if (apartmentsResult.error) throw apartmentsResult.error;
     if (buildingsResult.error) throw buildingsResult.error;
