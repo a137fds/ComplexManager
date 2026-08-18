@@ -16,8 +16,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
   useEffect(() => {
     let active = true;
+    let checking = false;
+
+    const clearAuth = () => {
+      if (!active) return;
+      setSession(null);
+      setProfile(null);
+      setPermissions([]);
+      setLoading(false);
+    };
+
     const loadProfile = async (currentSession: Session | null) => {
-      if (!currentSession) { if (active) { setProfile(null); setPermissions([]); setLoading(false); } return; }
+      if (!currentSession) { clearAuth(); return; }
       const { data: owner, error: ownerError } = await supabase.from('owners').select('id, default_language').eq('id', currentSession.user.id).single();
       if (!active) return;
       if (ownerError || !owner) { console.error('Failed to load owner profile:', ownerError); setProfile(null); setPermissions([]); setLoading(false); return; }
@@ -40,9 +50,47 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setPermissions((permissionRows || []).map(row => row.code));
       setLoading(false);
     };
-    void supabase.auth.getSession().then(({ data: { session: currentSession } }) => { if (!active) return; setSession(currentSession); void loadProfile(currentSession); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, currentSession) => { setSession(currentSession); void loadProfile(currentSession); });
-    return () => { active = false; listener.subscription.unsubscribe(); };
+
+    const checkSession = async () => {
+      if (checking || !active) return;
+      checking = true;
+      try {
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        if (!active) return;
+        if (error || !currentSession) {
+          clearAuth();
+          return;
+        }
+        setSession(currentSession);
+        await loadProfile(currentSession);
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkSession();
+    const { data: listener } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'SIGNED_OUT' || !currentSession) {
+        clearAuth();
+        return;
+      }
+      setSession(currentSession);
+      void loadProfile(currentSession);
+    });
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkSession();
+    };
+    const handleFocus = () => { void checkSession(); };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const value = useMemo(() => ({ session, profile, permissions, hasPermission: (code: string) => permissions.includes(code), loading, signOut: async () => { const { error } = await supabase.auth.signOut(); if (error) throw error; } }), [session, profile, permissions, loading]);
