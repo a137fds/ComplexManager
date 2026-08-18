@@ -16,7 +16,6 @@ export type UserLanguage = 'en' | 'ru' | 'tr' | 'fr' | 'da' | 'sv' | 'pl';
 export interface UserProfile {
   id: string;
   role: AppRole;
-  resident_id: number | null;
   default_language: UserLanguage;
 }
 
@@ -51,15 +50,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       }
 
       const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, role, resident_id, default_language')
+        .from('owners')
+        .select('id, role, default_language')
         .eq('id', currentSession.user.id)
         .single();
 
       if (!active) return;
 
       if (error) {
-        console.error('Failed to load user profile:', error);
+        console.error('Failed to load owner profile:', error);
         setProfile(null);
         setPermissions([]);
       } else {
