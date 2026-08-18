@@ -85,6 +85,19 @@ Automatic browser translation or third-party machine translation (for example, G
 
 Translations must therefore be stored and managed as part of the application's localization system, allowing each supported language to have its own verified text.
 
+### 4.3 User Default Language
+
+Every authenticated user must have a persistent **default language**. The default value for new users is English (`en`).
+
+The currently selected interface language and the user's default language are separate concepts:
+- A user may temporarily switch the interface language for the current session without changing their default language.
+- When a user selects a language, the application should offer the user the option to save that language as their default language.
+- If the user confirms, the selected language becomes the user's persistent default language for the website and for generated communications/documents, including invoices/receipts.
+
+The user's default language must be used when generating and sending invoices/receipts unless an authorized configuration explicitly overrides the recipient selection.
+
+Authorized roles must be able to change another user's default language. This capability must be controlled by a dedicated permission rather than being hard-coded solely by role name. Initially, Admin, Management Company, and Chairman are expected to have this capability, subject to the permission matrix.
+
 ## 5. Main Application Layout and Navigation
 
 The application should use a conventional management-dashboard layout consisting of three main visual areas:
@@ -167,11 +180,11 @@ For example, an authorized user may create an annual charge for 2026 with an amo
 
 The system must provide an explicit action such as **Send to All** for an authorized user.
 
-When executed, the system must create an individual invoice/receipt for each applicable resident based on the annual charge and generate the corresponding PDF document.
+When executed, the system must create an individual invoice/receipt for each applicable invoice recipient based on the annual charge and generate the corresponding PDF document.
 
-Each generated document must be associated with the correct resident and retained for later access from that resident's record. The system must also send the generated invoice/receipt to the resident's registered email address.
+Each generated document must be associated with the correct apartment/unit and invoice recipient(s), and retained for later access according to the configured ownership/access rules. The system must also send the generated invoice/receipt to the registered email address of each configured recipient.
 
-The operation must not merely send one shared document to everyone: each resident must receive an individual document associated with that resident.
+The operation must not merely send one shared document to everyone: each applicable apartment/unit must receive its own individual document.
 
 Generated invoices/receipts must be preserved as historical records. If the annual charge is subsequently changed, previously generated invoices must not silently change with it.
 
@@ -200,17 +213,45 @@ Authorized administrative roles may be able to access invoices for all residents
 
 Access to an invoice must be protected by permissions and ownership/association rules so that a resident cannot access another resident's financial documents.
 
+### 6.5 Multiple Owners and Invoice Recipients
+
+The data model must **not** assume that one user owns exactly one apartment/unit, or that one apartment/unit has exactly one owner.
+
+The required relationship is many-to-many:
+- One user may be associated with multiple apartments/units.
+- One apartment/unit may have multiple users/owners.
+
+This ownership/association relationship must therefore be represented by a dedicated relation rather than by a single `resident_id` or `user_id` field on the apartment/unit.
+
+When an apartment/unit has multiple associated owners/users, the system must support a configurable **invoice recipient** selection for that apartment/unit.
+
+The default business rule is:
+- One or more associated users may be designated as invoice recipients.
+- If multiple owners exist, the system must not automatically send a partial or duplicate invoice to every owner merely because they are associated with the apartment/unit.
+- An authorized user can explicitly select one recipient or multiple recipients for the apartment/unit.
+- The selected recipient(s) receive the invoice; the invoice itself remains associated with the apartment/unit and its full charge.
+
+The ability to configure invoice recipients must be controlled by a dedicated permission. Initially, Admin, Management Company, and Chairman are expected to be allowed to manage invoice-recipient settings, subject to the final permission matrix.
+
+The invoice recipient configuration must be independent from ownership. A person can remain an owner/associated user without being the recipient of invoices.
+
+Each recipient uses their own persistent default language when the invoice is generated/sent. If multiple recipients are configured, the system should generate/send the same financial invoice separately to each recipient in that recipient's default language, rather than splitting the amount between them.
+
 ## 7. Data and Persistence Architecture
 
-The application will contain persistent data representing the complex, buildings, residents/users, documents, photos, roles, permissions, annual charges, invoices/receipts, payments, and other entities defined during the requirements phase.
+The application will contain persistent data representing the complex, buildings, residents/users, documents, photos, roles, permissions, annual charges, invoices/receipts, payments, ownership/association relationships, invoice-recipient configuration, and other entities defined during the requirements phase.
 
-The logical data model must explicitly support one-to-many and many-to-many relationships where required. In particular, one resident must be able to have many invoices/receipts and many payments over time.
+The logical data model must explicitly support one-to-many and many-to-many relationships where required. In particular:
+- one resident/user may be associated with many apartments/units;
+- one apartment/unit may have many associated residents/users;
+- one resident must be able to have many invoices/receipts and many payments over time;
+- one apartment/unit may have one or more configured invoice recipients.
 
-Invoices/receipts must be separate entities related to residents rather than fields embedded directly into a resident record.
+Invoices/receipts must be separate entities related to the apartment/unit and applicable user/recipient associations rather than fields embedded directly into a resident record.
 
 PDF files and other binary assets must be stored through an appropriate file/object storage mechanism, while the database stores their metadata and relationships. The exact storage technology will be selected during the architecture phase.
 
-The data model and database architecture must be designed from the beginning to support roles, permissions, multilingual content, relationships between the complex and its buildings/residents, financial history, documents, and future expansion.
+The data model and database architecture must be designed from the beginning to support roles, permissions, multilingual content, relationships between the complex and its buildings/residents, multiple ownership, invoice recipients, financial history, documents, and future expansion.
 
 The specific database technology and implementation approach are not yet defined. Selecting and designing the persistence layer is an explicit technical challenge of the project and will be addressed during the architecture phase.
 
@@ -221,6 +262,10 @@ The system will use role-based permissions.
 Every protected page, navigation item, data operation, and functional area must have permissions associated with it. Permissions are assigned to roles, including the Guest role.
 
 Permissions must control not only whether a user can open a section, but also operations such as viewing, creating, editing, deleting/marking for deletion, and accessing individual resources where applicable.
+
+The permission model must include dedicated permissions for:
+- changing another user's default language;
+- configuring invoice recipients for an apartment/unit.
 
 Financial data and invoices require additional ownership/access checks so that residents can only access their own financial information unless their role explicitly grants broader access.
 
