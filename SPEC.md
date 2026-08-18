@@ -81,7 +81,7 @@ The selector should be presented as a flag-based control or another clear visual
 
 The application must use explicitly prepared translations for all supported interface text and system content where translation is required.
 
-Automatic browser translation or third-party machine translation (for example, Google Translate) must not be relied upon as the primary localization mechanism. This is especially important for technical, administrative, financial, legal, and other context-sensitive information where an incorrect translation could change the meaning.
+Automatic browser translation or third-party machine translation must not be relied upon as the primary localization mechanism.
 
 Translations must therefore be stored and managed as part of the application's localization system, allowing each supported language to have its own verified text.
 
@@ -94,9 +94,48 @@ The currently selected interface language and the user's default language are se
 - When a user selects a language, the application should offer the user the option to save that language as their default language.
 - If the user confirms, the selected language becomes the user's persistent default language for the website and for generated communications/documents, including invoices/receipts.
 
-The user's default language must be used when generating and sending invoices/receipts unless an authorized configuration explicitly overrides the recipient selection.
+The user's default language must be used when generating and sending invoices/receipts.
 
 Authorized roles must be able to change another user's default language. This capability must be controlled by a dedicated permission rather than being hard-coded solely by role name. Initially, Admin, Management Company, and Chairman are expected to have this capability, subject to the permission matrix.
+
+### 4.4 Translation Rules for User Data and Turkish Terms
+
+Localization applies to interface labels and system-generated text, **not to user-entered data**.
+
+The following must never be automatically translated:
+- complex/site names entered by users;
+- complex addresses;
+- building names entered by users;
+- apartment/unit identifiers and other user-defined identifiers;
+- other free-form user data.
+
+The value displayed must remain exactly as stored, because the entered value is the authoritative name/address.
+
+The Turkish term **Site** has a special semantic meaning in the project. When the UI concept is presented as `Complex (Site)`, only `Complex` is translated; `(Site)` remains unchanged in every language.
+
+The Turkish term **Kapıcı** is an original Turkish terminology marker. Where the project requires the original term to be retained, the translated role/description is followed by `(Kapıcı)` rather than translating the original term away.
+
+The word **Building** must be translated according to its meaning as a building/corpus/building of the residential complex, not as a construction block or building material. Translations must be reviewed in context for every supported language.
+
+### 4.5 Complete Localization Audit
+
+Every user-facing string must use the central localization system. No page or component may contain user-facing English text merely because it was easier to hard-code it.
+
+The localization audit must cover:
+- all supported languages;
+- navigation;
+- headings;
+- forms;
+- buttons;
+- validation and error messages;
+- confirmation dialogs;
+- tables and filters;
+- roles and permissions shown to users;
+- administration screens;
+- billing and invoice screens;
+- empty states and loading states.
+
+A page must not become a mixture of languages when the user changes the selected language. The goal is a consistent language experience across the entire visible interface.
 
 ## 5. Main Application Layout and Navigation
 
@@ -106,13 +145,23 @@ The application should use a conventional management-dashboard layout consisting
 2. A left-side navigation menu.
 3. A main content area occupying the majority of the available space and displaying the selected data and functionality.
 
-The initial main navigation must contain:
-- **Complex (Site)**
-- **Buildings**
-- **Residents**
-- **Administration**
+### 5.0 Start Page / Overview
 
-Navigation items and their visibility must be controlled by permissions. A user must only see sections for which the user's role has access.
+The first application screen after authentication is the **Start Page** (`Обзор` in Russian), not a technical database/CRUD screen.
+
+The Start Page is useful to all authenticated users and must respect the user's permissions and data scope.
+
+It should initially contain summary cards such as:
+- number of accessible complexes;
+- number of accessible buildings.
+
+The cards are also navigation shortcuts:
+- clicking the Complexes card opens the Complex (Site) view;
+- clicking the Buildings card opens the Buildings view.
+
+The counts must reflect the data accessible to the current user rather than blindly exposing global database totals.
+
+The Start Page should remain useful for users with different scopes. For example, an ordinary resident may see one accessible complex and the buildings relevant to that resident, while an administrator may see the full totals.
 
 ### 5.1 Complex (Site)
 
@@ -127,6 +176,8 @@ Users with permission to create complex records may see an **Add (+)** action. U
 
 Editing should use an explicit Edit action rather than relying on double-click. When editing begins, display values may be replaced by appropriate input controls. Confirming the edit saves the changes and returns the row to its normal display state.
 
+The Create/Edit Complex form must accept the complex name and address. It must not ask the user to enter or change a `UserID`; the acting authenticated user's identity must be determined from the authenticated session and authorization rules.
+
 ### 5.2 Buildings
 
 The Buildings section represents the individual buildings belonging to the complex.
@@ -136,6 +187,8 @@ The interface should follow the same general pattern as the Complex section: rec
 Typical building-level resources may include photos, documents, and other information associated with the building.
 
 Creation and editing actions must be controlled by role permissions.
+
+The Create/Edit Building form must not expose a `Change User ID` or equivalent user-ID field. The acting authenticated user's identity must come from the authenticated session and authorization rules.
 
 ### 5.3 Residents
 
@@ -160,7 +213,11 @@ The exact financial fields and calculation rules will be defined separately.
 
 The Administration section contains administrative functions and is restricted to roles with the corresponding permissions.
 
-The exact functionality of Administration will be defined during the requirements phase.
+The Administration area must contain the role/permission matrix and related administration tools when the current user has permission to manage them.
+
+The permission matrix must not be an empty placeholder: it must display the defined roles, permissions, and role-to-permission assignments stored in the database.
+
+For administrative audit metadata such as last changed user/date, the UI should show human-readable values rather than raw user UUIDs. Such metadata is restricted to Admin unless a specific permission grants broader access.
 
 ## 6. Billing, Annual Charges and Invoices
 
@@ -173,8 +230,6 @@ The Management Company must have an authorized function for managing annual resi
 An authorized user must be able to define an annual charge by specifying at least:
 - Year
 - Amount
-
-For example, an authorized user may create an annual charge for 2026 with an amount of EUR 1,400.
 
 ### 6.2 Generate and Send to All Residents
 
@@ -271,6 +326,123 @@ Financial data and invoices require additional ownership/access checks so that r
 
 The detailed permission matrix will be defined during the requirements phase.
 
-## 9. Requirements Status
+## 9. Specification Workflow and Statuses
 
-This specification is a living document. Requirements will be added, clarified, and revised as the project is discussed.
+`SPEC.md` is the source of truth for approved product and technical requirements. User discussion is raw input; requirements must first be formulated clearly, then approved, then recorded here, and only then implemented.
+
+Every requirement has one of these statuses:
+
+- **Proposed** — captured as a requirement but not yet approved as final.
+- **Approved** — explicitly approved by the user and ready for implementation.
+- **Implemented** — implemented in the repository, but not yet verified by the user or final verification process.
+- **Verified** — implementation has been checked against the requirement and is considered complete.
+
+For the initial specification reconstruction, **all requirements in Sections 1–8 and the additional requirements below are intentionally marked as `Proposed` regardless of the current state of the code**. This is deliberate: Step 1 is to reconstruct the requirements from the conversation without using implementation as evidence. Step 2 is a separate implementation audit that will update these statuses based on the actual repository and database.
+
+### 9.1 Requirements captured from the development discussion — initial status: Proposed
+
+**Proposed — Initial architecture priorities**
+- Multilingual support is a first-class architectural concern from the beginning.
+- Role-based permissions are a first-class architectural concern from the beginning.
+- Adding a new language must not require rewriting existing pages/forms.
+- Permission checks must be centralized and reusable rather than duplicated as ad-hoc role checks throughout the UI.
+
+**Proposed — Authentication and Supabase configuration**
+- The application uses Supabase authentication.
+- The public Supabase client key must be configured correctly for the deployed GitHub Pages application.
+- Authentication must work in the deployed GitHub Pages environment, not only locally.
+
+**Proposed — Start Page and removal of technical CRUD**
+- The former `Cloud SQL (CRUD)` screen was a technical database-testing screen and is not part of the final user-facing navigation.
+- `Cloud SQL (CRUD)` must be removed from the main navigation.
+- The first navigation item is `Start Page` in English and `Обзор` in Russian, with equivalent translations in other supported languages.
+- The Start Page contains useful summary statistics and shortcuts to Complex and Buildings.
+- The technical CRUD screen should no longer be treated as an application feature.
+- Its useful summary information may be retained on the Start Page.
+
+**Proposed — Complex and Building forms**
+- Complex creation/editing accepts name and address only from the form.
+- Building creation/editing accepts the building's own user-entered data and must not expose `Change User ID`/`ChangeUserID`.
+- Acting user identity is determined from the authenticated session and server/database authorization, not supplied as a form field.
+
+**Proposed — User-entered names and addresses**
+- User-entered complex names, complex addresses, building names, and other identifiers must never be passed through interface translation.
+- The exact stored value is the authoritative display value.
+
+**Proposed — Default language and invoice language**
+- New users default to English.
+- A user can select a language and choose whether to make it their persistent default.
+- The saved default language is used for both the website and generated invoices/receipts.
+- Admin, Management Company, and Chairman can change another user's default language when the corresponding permission is granted.
+- The language selector's selected value must reflect the user's persisted default language when the session starts; it must not visually remain on English merely because English is the first option.
+
+**Proposed — Multiple owners / multiple apartments**
+- One user may have multiple apartments/units.
+- One apartment/unit may have multiple owners/users.
+- The ownership/association model must therefore be many-to-many.
+- The current database implementation must be audited against this requirement before further ownership features are built.
+
+**Proposed — Invoice recipient configuration**
+- Ownership and invoice recipient are separate concepts.
+- If an apartment/unit has multiple owners/users, an authorized user can select one or more invoice recipients.
+- The invoice is not divided between owners.
+- Each selected recipient receives the full invoice amount as a copy for that recipient.
+- Multiple recipients may each receive the same financial invoice independently.
+- The recipient configuration is controlled by a permission and is initially intended for Admin, Management Company, and Chairman subject to the permission matrix.
+- Each recipient receives the invoice in their own default language.
+
+**Proposed — Administration and audit metadata**
+- The role/permission matrix must be populated from the database and must not be an empty UI placeholder.
+- Administrative change metadata must use human-readable values rather than exposing raw user UUIDs.
+- `Change User` and `Change Date` information is restricted to Admin unless a specific permission grants broader access.
+
+**Proposed — Localization quality**
+- The entire application must be audited for missing translations across all seven supported languages.
+- Hard-coded English strings in components must be replaced with localization keys where they are user-facing.
+- Context-sensitive terms must be translated according to their meaning, not word-for-word.
+- `Building` must not be translated as a construction material/block; the correct residential-building meaning must be used.
+- `Complex (Site)` must translate `Complex` while preserving `(Site)` exactly.
+- `Kapıcı` must remain available as the original Turkish terminology where specified.
+- Switching language must produce a coherent interface rather than a mixture of languages.
+
+**Proposed — Development process**
+- New requirements are first formulated from the user's raw description.
+- The formulated requirement is presented to the user for approval.
+- After approval it is written to `SPEC.md`.
+- Implementation starts after the requirement is recorded.
+- After implementation, the requirement status is changed to `Implemented`.
+- After verification against the implementation and user testing, it becomes `Verified`.
+- Before further feature development, the project should periodically compare `SPEC.md` against the repository and database so that missing implementation and undocumented behavior are detected.
+
+## 10. Two-Step Specification Reconstruction and Implementation Audit
+
+The project is currently undergoing a deliberate two-step reconciliation process.
+
+### Step 1 — Requirements reconstruction
+
+**Status: In progress / initial status assignment.**
+
+Capture the requirements from the development discussion in `SPEC.md`, including architecture decisions, localization rules, roles, permissions, forms, Start Page behavior, default language, ownership relationships, invoice recipients, and other agreed behavior. Assign all captured requirements their initial status of `Proposed`, without inferring implementation status from the existing code.
+
+### Step 2 — Implementation audit
+
+**Status: Not started.**
+
+After Step 1 is complete, inspect the actual GitHub repository, Supabase schema/data, authentication configuration, UI behavior, and deployment configuration against every requirement in this specification. Update statuses:
+- `Proposed` → `Approved` where the requirement is confirmed as an agreed requirement;
+- `Approved` → `Implemented` when the repository/database actually implements it;
+- `Implemented` → `Verified` only after the implementation is checked and, where appropriate, user-tested.
+
+Any discrepancy must result in a concrete implementation task or a documented clarification rather than being silently ignored.
+
+## 11. Open Questions / Not Yet Defined
+
+The following remain requirements questions rather than implementation assumptions:
+- Exact Guest permissions.
+- Full role-to-permission matrix.
+- Exact financial fields and invoice schema.
+- Legal requirements for issuing and sending invoices/receipts in different languages. The product requirement assumes multilingual invoice generation is permitted; legal validation remains an external business/legal question.
+- Exact ownership semantics (owner vs resident vs tenant) and the terminology used in the UI.
+- Exact database schema for units/apartments and their many-to-many user associations.
+- Exact invoice-recipient persistence model.
+- Exact PDF generation and file-storage implementation.
