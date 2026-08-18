@@ -9,9 +9,10 @@ interface SidebarProps { currentTab: TabType; onTabSelect: (tab: TabType) => voi
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabSelect, currentRole, currentLang }) => {
   const t = translations[currentLang];
+  const complexLabel = t.navComplex.includes('(Site)') ? t.navComplex : `${t.navComplex} (Site)`;
   const navItems = [
     { id: 'database_crud' as TabType, label: 'Cloud SQL (CRUD)', icon: Database, visible: true },
-    { id: 'complex' as TabType, label: t.navComplex, icon: Building2, visible: currentRole !== 'guest' },
+    { id: 'complex' as TabType, label: complexLabel, icon: Building2, visible: currentRole !== 'guest' },
     { id: 'buildings' as TabType, label: t.navBuildings, icon: Layers, visible: currentRole !== 'guest' },
     { id: 'residents' as TabType, label: t.navResidents, icon: Users, visible: currentRole !== 'guest' },
     { id: 'billing' as TabType, label: t.navBilling, icon: CreditCard, visible: ['admin','management_company','chairman','board_member','financial_controller','resident'].includes(currentRole) },
