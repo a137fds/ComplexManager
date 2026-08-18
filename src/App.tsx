@@ -4,7 +4,7 @@ import { ComplexEntity, BuildingEntity, databaseApi } from './api/databaseApi';
 import { initialComplexInfo, initialBuildings, initialResidents, initialAnnualCharges, initialInvoices, initialPayments, initialTasks, initialDocuments, initialAuditLogs } from './data/initialData';
 import { Header } from './components/Header';
 import { Sidebar, TabType } from './components/Sidebar';
-import { CloudSqlCrudView } from './components/CloudSqlCrudView';
+import { StartPage } from './components/StartPage';
 import { ComplexView } from './components/ComplexView';
 import { BuildingsView } from './components/BuildingsView';
 import { ResidentsView } from './components/ResidentsView';
@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   const [selectedComplexId, setSelectedComplexId] = useState<number | null>(null);
   const [selectedComplexFilter, setSelectedComplexFilter] = useState<number | 'all'>('all');
   const [currentLang, setCurrentLang] = useState<Language>('en');
-  const [currentTab, setCurrentTab] = useState<TabType>('database_crud');
+  const [currentTab, setCurrentTab] = useState<TabType>('start_page');
   const [activeInvoiceModal, setActiveInvoiceModal] = useState<Invoice | null>(null);
 
   const refreshDatabaseData = async () => {
@@ -55,11 +55,11 @@ export const App: React.FC = () => {
     setAuditLogs(prev => [newLog, ...prev]);
   };
 
-  const handleCreateComplex = async (data: { ComplexName: string; Address: string; ChangeUserID?: string }) => { const created = await databaseApi.createComplex(data); setComplexes(prev => [created, ...prev]); setSelectedComplexId(created.ComplexID); addAuditLog('CREATE_COMPLEX', 'complex', String(created.ComplexID), `Created complex ${created.ComplexName}`); };
-  const handleUpdateComplexDb = async (id: number, data: { ComplexName: string; Address: string; ChangeUserID?: string }) => { const updated = await databaseApi.updateComplex(id, data); setComplexes(prev => prev.map(item => item.ComplexID === id ? updated : item)); addAuditLog('UPDATE_COMPLEX', 'complex', String(id), `Updated complex ${updated.ComplexName}`); };
+  const handleCreateComplex = async (data: { ComplexName: string; Address: string }) => { const created = await databaseApi.createComplex(data); setComplexes(prev => [created, ...prev]); setSelectedComplexId(created.ComplexID); addAuditLog('CREATE_COMPLEX', 'complex', String(created.ComplexID), `Created complex ${created.ComplexName}`); };
+  const handleUpdateComplexDb = async (id: number, data: { ComplexName: string; Address: string }) => { const updated = await databaseApi.updateComplex(id, data); setComplexes(prev => prev.map(item => item.ComplexID === id ? updated : item)); addAuditLog('UPDATE_COMPLEX', 'complex', String(id), `Updated complex ${updated.ComplexName}`); };
   const handleDeleteComplex = async (id: number) => { await databaseApi.deleteComplex(id); setComplexes(prev => prev.filter(item => item.ComplexID !== id)); setDbBuildings(prev => prev.filter(item => item.ComplexID !== id)); setSelectedComplexId(current => current === id ? null : current); addAuditLog('DELETE_COMPLEX', 'complex', String(id), `Deleted complex ${id}`); };
-  const handleCreateBuilding = async (data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => { const created = await databaseApi.createBuilding(data); setDbBuildings(prev => [created, ...prev]); addAuditLog('CREATE_BUILDING', 'building', String(created.BuildingID), `Created building ${created.BuildingName}`); };
-  const handleUpdateBuildingDb = async (id: number, data: { ComplexID: number; BuildingName: string; ChangeUserID?: string }) => { const updated = await databaseApi.updateBuilding(id, data); setDbBuildings(prev => prev.map(item => item.BuildingID === id ? updated : item)); addAuditLog('UPDATE_BUILDING', 'building', String(id), `Updated building ${updated.BuildingName}`); };
+  const handleCreateBuilding = async (data: { ComplexID: number; BuildingName: string }) => { const created = await databaseApi.createBuilding(data); setDbBuildings(prev => [created, ...prev]); addAuditLog('CREATE_BUILDING', 'building', String(created.BuildingID), `Created building ${created.BuildingName}`); };
+  const handleUpdateBuildingDb = async (id: number, data: { ComplexID: number; BuildingName: string }) => { const updated = await databaseApi.updateBuilding(id, data); setDbBuildings(prev => prev.map(item => item.BuildingID === id ? updated : item)); addAuditLog('UPDATE_BUILDING', 'building', String(id), `Updated building ${updated.BuildingName}`); };
   const handleDeleteBuilding = async (id: number) => { await databaseApi.deleteBuilding(id); setDbBuildings(prev => prev.filter(item => item.BuildingID !== id)); addAuditLog('DELETE_BUILDING', 'building', String(id), `Deleted building ${id}`); };
   const handleUpdateComplex = (updated: ComplexInfo) => { setComplex(updated); addAuditLog('UPDATE_COMPLEX_INFO', 'complex', updated.id, `Updated legal & banking registry for ${updated.name}`); };
   const handleUpdateBuilding = (updated: Building) => { setBuildings(prev => prev.map(b => b.id === updated.id ? updated : b)); addAuditLog('UPDATE_BUILDING', 'building', updated.id, `Updated specifications for ${updated.blockCode}`); };
@@ -80,7 +80,7 @@ export const App: React.FC = () => {
     <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
       <Sidebar currentTab={currentTab} onTabSelect={setCurrentTab} currentRole={currentRole} currentLang={currentLang} />
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {currentTab === 'database_crud' && <CloudSqlCrudView currentLang={currentLang} onAuditLog={addAuditLog} />}
+        {currentTab === 'start_page' && <StartPage complexes={complexes} buildings={dbBuildings} currentLang={currentLang} onOpenComplexes={() => setCurrentTab('complex')} onOpenBuildings={() => setCurrentTab('buildings')} />}
         {currentTab === 'complex' && <ComplexView complexes={complexes} selectedComplexId={selectedComplexId} onSelectComplex={setSelectedComplexId} onCreateComplex={handleCreateComplex} onUpdateComplex={handleUpdateComplexDb} onDeleteComplex={handleDeleteComplex} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} buildings={dbBuildings} onNavigateToBuildings={(complexId) => { if (complexId !== undefined) setSelectedComplexFilter(complexId); setCurrentTab('buildings'); }} currentRole={currentRole} currentLang={currentLang} />}
         {currentTab === 'buildings' && <BuildingsView buildings={dbBuildings} complexes={complexes} selectedComplexFilter={selectedComplexFilter} onSelectComplexFilter={setSelectedComplexFilter} onCreateBuilding={handleCreateBuilding} onUpdateBuilding={handleUpdateBuildingDb} onDeleteBuilding={handleDeleteBuilding} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} currentRole={currentRole} currentLang={currentLang} />}
         {currentTab === 'residents' && <ResidentsView residents={residents} invoices={invoices} payments={payments} onRecordPayment={handleRecordPayment} onOpenInvoiceModal={inv => setActiveInvoiceModal(inv)} currentRole={currentRole} currentLang={currentLang} />}
