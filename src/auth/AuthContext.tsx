@@ -11,10 +11,13 @@ export type AppRole =
   | 'site_staff'
   | 'user';
 
+export type UserLanguage = 'en' | 'ru' | 'tr' | 'fr' | 'da' | 'sv' | 'pl';
+
 export interface UserProfile {
   id: string;
   role: AppRole;
   resident_id: number | null;
+  default_language: UserLanguage;
 }
 
 interface AuthContextValue {
@@ -45,7 +48,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, role, resident_id')
+        .select('id, role, resident_id, default_language')
         .eq('id', currentSession.user.id)
         .single();
 
@@ -55,7 +58,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         console.error('Failed to load user profile:', error);
         setProfile(null);
       } else {
-        setProfile(data as UserProfile);
+        setProfile({
+          ...(data as UserProfile),
+          default_language: data.default_language || 'en',
+        });
       }
       setLoading(false);
     };
