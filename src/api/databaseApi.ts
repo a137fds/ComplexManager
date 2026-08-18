@@ -44,10 +44,60 @@ const API_BASE_URL = (
   'https://tntoxgpemvitpqkjxdki.supabase.co/functions/v1/api'
 ).replace(/\/$/, '');
 
+function requiredPermission(path: string, method: string): string | null {
+  const normalized = path.split('?')[0];
+  const isComplex = normalized === '/complexes' || normalized.startsWith('/complexes/');
+  const isBuilding = normalized === '/buildings' || normalized.startsWith('/buildings/');
+  if (isComplex) {
+    if (method === 'GET') return 'complex.view';
+    if (method === 'POST') return 'complex.create';
+    if (method === 'PUT' || method === 'PATCH') return 'complex.edit';
+    if (method === 'DELETE') return 'complex.delete';
+  }
+  if (isBuilding) {
+    if (method === 'GET') return 'buildings.view';
+    if (method === 'POST') return 'buildings.create';
+    if (method === 'PUT' || method === 'PATCH') return 'buildings.edit';
+    if (method === 'DELETE') return 'buildings.delete';
+  }
+  return null;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error('Authentication required');
+  if (!session?.access_token) throw new Error('Authentication required');
+
+  const method = (options?.method || 'GET').toUpperCase();
+  const permission = requiredPermission(path, method);
+  if (permission) {
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+    if (profileError) throw new Error('Unable to verify permissions');
+
+    const { data: role, error: roleError } = await supabase
+      .from('roles')
+      .select('id')
+      .eq('code', profile.role)
+      .single();
+    if (roleError) throw new Error('Unable to verify role permissions');
+
+    const { data: permissionRow, error: permissionError } = await supabase
+      .from('permissions')
+      .select('id')
+      .eq('code', permission)
+      .single();
+    if (permissionError) throw new Error('Unable to verify requested permission');
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('role_permissions')
+      .select('permission_id')
+      .eq('role_id', role.id)
+      .eq('permission_id', permissionRow.id)
+      .maybeSingle();
+    if (assignmentError || !assignment) throw new Error('Permission denied');
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -60,9 +110,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   const json = await response.json();
-  if (!response.ok) {
-    throw new Error(json?.error || `API request failed (${response.status})`);
-  }
+  if (!response.ok) throw new Error(json?.error || `API request failed (${response.status})`);
   return json as T;
 }
 
@@ -72,22 +120,7 @@ function normalizeComplex(item: any): ComplexEntity {
   const Address = item.Address ?? item.address ?? '';
   const ChangeUserID = item.ChangeUserID ?? item.changeUserId ?? null;
   const ChangeDate = item.ChangeDate ?? item.changeDate ?? new Date().toISOString();
-
-  return {
-    ...item,
-    ComplexID,
-    ComplexName,
-    Address,
-    ChangeUserID,
-    ChangeDate,
-    complexId: ComplexID,
-    complexName: ComplexName,
-    address: Address,
-    changeUserId: ChangeUserID,
-    changeDate: String(ChangeDate),
-    buildingCount: item.buildingCount !== undefined ? Number(item.buildingCount) : undefined,
-    buildings: Array.isArray(item.buildings) ? item.buildings.map(normalizeBuilding) : undefined,
-  };
+  return { ...item, ComplexID, ComplexName, Address, ChangeUserID, ChangeDate, complexId: ComplexID, complexName: ComplexName, address: Address, changeUserId: ChangeUserID, changeDate: String(ChangeDate), buildingCount: item.buildingCount !== undefined ? Number(item.buildingCount) : undefined, buildings: Array.isArray(item.buildings) ? item.buildings.map(normalizeBuilding) : undefined };
 }
 
 function normalizeBuilding(item: any): BuildingEntity {
@@ -98,24 +131,7 @@ function normalizeBuilding(item: any): BuildingEntity {
   const ChangeDate = item.ChangeDate ?? item.changeDate ?? new Date().toISOString();
   const ComplexName = item.ComplexName ?? item.complexName ?? undefined;
   const Address = item.Address ?? item.complexAddress ?? item.address ?? undefined;
-
-  return {
-    ...item,
-    BuildingID,
-    ComplexID,
-    BuildingName,
-    ChangeUserID,
-    ChangeDate,
-    ComplexName,
-    Address,
-    buildingId: BuildingID,
-    complexId: ComplexID,
-    buildingName: BuildingName,
-    changeUserId: ChangeUserID,
-    changeDate: String(ChangeDate),
-    complexName: ComplexName,
-    complexAddress: Address,
-  };
+  return { ...item, BuildingID, ComplexID, BuildingName, ChangeUserID, ChangeDate, ComplexName, Address, buildingId: BuildingID, complexId: ComplexID, buildingName: BuildingName, changeUserId: ChangeUserID, changeDate: String(ChangeDate), complexName: ComplexName, complexAddress: Address };
 }
 
 export const databaseApi = {
