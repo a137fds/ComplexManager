@@ -15,6 +15,7 @@ const startLabels: Record<Language, { start: string; settings: string; role: str
   sv: { start: 'Översikt', settings: 'Administration', role: 'Rollbehörigheter', roleDesc: 'Behörigheter hanteras centralt av en administratör under Administration.', law: 'Turkiets lag nr 634 om ägarlägenheter', governance: 'Komplexstyrning och revision', apartments: 'Lägenheter', owners: 'Ägare', errors: 'Fel' },
   pl: { start: 'Przegląd', settings: 'Administracja', role: 'Uprawnienia ról', roleDesc: 'Uprawnienia są centralnie zarządzane przez administratora w Administracji.', law: 'Turecka ustawa nr 634 o własności lokali', governance: 'Zarządzanie kompleksem i audyt', apartments: 'Mieszkania', owners: 'Właściciele', errors: 'Błędy' }
 };
+const paymentLabels: Record<Language, string> = { en: 'Payments', ru: 'Оплата', tr: 'Ödemeler', fr: 'Paiements', da: 'Betalinger', sv: 'Betalningar', pl: 'Płatności' };
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabSelect, currentLang }) => {
   const { hasPermission } = useAuth(); const t = translations[currentLang]; const s = startLabels[currentLang];
   const navItems = [
@@ -23,7 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabSelect, curre
     { id: 'buildings' as TabType, label: t.navBuildings, icon: Layers, visible: hasPermission('buildings.view') },
     { id: 'residents' as TabType, label: s.apartments, icon: Home, visible: hasPermission('residents.view') },
     { id: 'owners' as TabType, label: s.owners, icon: Users, visible: hasPermission('residents.view') },
-    { id: 'billing' as TabType, label: t.navBilling, icon: CreditCard, visible: hasPermission('billing.view') },
+    { id: 'billing' as TabType, label: paymentLabels[currentLang], icon: CreditCard, visible: hasPermission('billing.view') },
     { id: 'tasks' as TabType, label: t.navTasks, icon: Wrench, visible: hasPermission('tasks.view') },
     { id: 'documents' as TabType, label: t.navDocuments, icon: FileText, visible: hasPermission('documents.view') },
     { id: 'administration' as TabType, label: s.settings, icon: Settings, visible: hasPermission('administration.view') },
