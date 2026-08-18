@@ -12,10 +12,12 @@ import { BillingView } from './components/BillingView';
 import { TasksView } from './components/TasksView';
 import { DocumentsView } from './components/DocumentsView';
 import { AdministrationView } from './components/AdministrationView';
+import { ErrorLogView } from './components/ErrorLogView';
 import { GuestLandingView } from './components/GuestLandingView';
 import { InvoiceModal } from './components/InvoiceModal';
 import { useAuth } from './auth/AuthContext';
 import { supabase } from './lib/supabase';
+import { logError, technicalMessage } from './lib/errorLogger';
 
 const languagePreferencePrompt: Record<Language, string> = {
   en: 'Use this language as your default language for the website and documents?',
@@ -25,6 +27,16 @@ const languagePreferencePrompt: Record<Language, string> = {
   da: 'Skal dette være standardsproget for webstedet og dokumenter?',
   sv: 'Ska detta vara standardspråk för webbplatsen och dokument?',
   pl: 'Ustawić ten język jako domyślny dla strony i dokumentów?'
+};
+
+const genericErrorMessage: Record<Language, string> = {
+  en: 'Operation failed. The error has been recorded for administrator review.',
+  ru: 'Ошибка выполнения операции. Ошибка записана для просмотра администратором.',
+  tr: 'İşlem başarısız oldu. Hata yönetici incelemesi için kaydedildi.',
+  fr: 'Échec de l’opération. L’erreur a été enregistrée pour examen par l’administrateur.',
+  da: 'Handlingen mislykkedes. Fejlen er registreret til administratorens gennemgang.',
+  sv: 'Åtgärden misslyckades. Felet har sparats för administratörens granskning.',
+  pl: 'Operacja nie powiodła się. Błąd został zapisany do wglądu administratora.'
 };
 
 export const App: React.FC = () => {
@@ -48,6 +60,7 @@ export const App: React.FC = () => {
   const [savedDefaultLanguage, setSavedDefaultLanguage] = useState<Language>('en');
   const [currentTab, setCurrentTab] = useState<TabType>('start_page');
   const [activeInvoiceModal, setActiveInvoiceModal] = useState<Invoice | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.default_language) {
@@ -57,33 +70,28 @@ export const App: React.FC = () => {
     }
   }, [profile?.default_language]);
 
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      const message = event.error instanceof Error ? event.error.message : event.message;
+      setOperationError(genericErrorMessage[currentLang]);
+      void logError({ operation: 'UNHANDLED_ERROR', path: window.location.pathname, technicalMessage: technicalMessage(event.error || event.message), userMessage: genericErrorMessage[currentLang], context: { source: 'window.error', message } });
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      setOperationError(genericErrorMessage[currentLang]);
+      void logError({ operation: 'UNHANDLED_PROMISE_REJECTION', path: window.location.pathname, technicalMessage: technicalMessage(event.reason), userMessage: genericErrorMessage[currentLang], context: { source: 'unhandledrejection' } });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onRejection); };
+  }, [currentLang]);
+
   const handleLanguageChange = async (lang: Language) => {
-    if (!profile?.id) {
-      setCurrentLang(lang);
-      return;
-    }
-
-    if (savedDefaultLanguage === lang) {
-      setCurrentLang(lang);
-      return;
-    }
-
+    if (!profile?.id) { setCurrentLang(lang); return; }
+    if (savedDefaultLanguage === lang) { setCurrentLang(lang); return; }
     const shouldSaveAsDefault = window.confirm(languagePreferencePrompt[lang]);
-    if (!shouldSaveAsDefault) {
-      // Cancel means: do not change either the current language or the saved default.
-      return;
-    }
-
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ default_language: lang })
-      .eq('id', profile.id);
-
-    if (error) {
-      console.error('Failed to save default language:', error);
-      return;
-    }
-
+    if (!shouldSaveAsDefault) return;
+    const { error } = await supabase.from('user_profiles').update({ default_language: lang }).eq('id', profile.id);
+    if (error) throw error;
     setSavedDefaultLanguage(lang);
     setCurrentLang(lang);
   };
@@ -91,191 +99,51 @@ export const App: React.FC = () => {
   const refreshDatabaseData = async () => {
     setDbLoading(true);
     try {
-      const [loadedComplexes, loadedBuildings] = await Promise.all([
-        databaseApi.getComplexes(),
-        databaseApi.getBuildings()
-      ]);
+      const [loadedComplexes, loadedBuildings] = await Promise.all([databaseApi.getComplexes(), databaseApi.getBuildings()]);
       setComplexes(loadedComplexes);
       setDbBuildings(loadedBuildings);
-      setSelectedComplexId(current => current && loadedComplexes.some(c => c.ComplexID === current)
-        ? current
-        : loadedComplexes[0]?.ComplexID ?? null);
-    } catch (error) {
-      console.error('Failed to load database data:', error);
-    } finally {
-      setDbLoading(false);
-    }
+      setSelectedComplexId(current => current && loadedComplexes.some(c => c.ComplexID === current) ? current : loadedComplexes[0]?.ComplexID ?? null);
+    } finally { setDbLoading(false); }
   };
 
   useEffect(() => { void refreshDatabaseData(); }, []);
 
-  const addAuditLog = (action: string, targetType: string, targetId: string, details: string) => {
-    setAuditLogs(prev => [{
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      userRole: currentRole,
-      userName: currentRole.replace('_', ' ').toUpperCase(),
-      action,
-      targetType,
-      targetId,
-      details
-    }, ...prev]);
-  };
-
-  const handleCreateComplex = async (data: { ComplexName: string; Address: string }) => {
-    const created = await databaseApi.createComplex(data);
-    setComplexes(prev => [created, ...prev]);
-    setSelectedComplexId(created.ComplexID);
-    addAuditLog('CREATE_COMPLEX', 'complex', String(created.ComplexID), `Created complex ${created.ComplexName}`);
-  };
-
-  const handleUpdateComplexDb = async (id: number, data: { ComplexName: string; Address: string }) => {
-    const updated = await databaseApi.updateComplex(id, data);
-    setComplexes(prev => prev.map(item => item.ComplexID === id ? updated : item));
-    addAuditLog('UPDATE_COMPLEX', 'complex', String(id), `Updated complex ${updated.ComplexName}`);
-  };
-
-  const handleDeleteComplex = async (id: number) => {
-    await databaseApi.deleteComplex(id);
-    setComplexes(prev => prev.filter(item => item.ComplexID !== id));
-    setDbBuildings(prev => prev.filter(item => item.ComplexID !== id));
-    setSelectedComplexId(current => current === id ? null : current);
-    addAuditLog('DELETE_COMPLEX', 'complex', String(id), `Deleted complex ${id}`);
-  };
-
-  const handleCreateBuilding = async (data: { ComplexID: number; BuildingName: string }) => {
-    const created = await databaseApi.createBuilding(data);
-    setDbBuildings(prev => [created, ...prev]);
-    addAuditLog('CREATE_BUILDING', 'building', String(created.BuildingID), `Created building ${created.BuildingName}`);
-  };
-
-  const handleUpdateBuildingDb = async (id: number, data: { ComplexID: number; BuildingName: string }) => {
-    const updated = await databaseApi.updateBuilding(id, data);
-    setDbBuildings(prev => prev.map(item => item.BuildingID === id ? updated : item));
-    addAuditLog('UPDATE_BUILDING', 'building', String(id), `Updated building ${updated.BuildingName}`);
-  };
-
-  const handleDeleteBuilding = async (id: number) => {
-    await databaseApi.deleteBuilding(id);
-    setDbBuildings(prev => prev.filter(item => item.BuildingID !== id));
-    addAuditLog('DELETE_BUILDING', 'building', String(id), `Deleted building ${id}`);
-  };
-
-  const handleUpdateComplex = (updated: ComplexInfo) => {
-    setComplex(updated);
-    addAuditLog('UPDATE_COMPLEX_INFO', 'complex', updated.id, `Updated legal & banking registry for ${updated.name}`);
-  };
-
-  const handleUpdateBuilding = (updated: Building) => {
-    setBuildings(prev => prev.map(b => b.id === updated.id ? updated : b));
-    addAuditLog('UPDATE_BUILDING', 'building', updated.id, `Updated specifications for ${updated.blockCode}`);
-  };
-
-  const handleAddBuilding = (created: Building) => {
-    setBuildings(prev => [created, ...prev]);
-    addAuditLog('CREATE_BUILDING', 'building', created.id, `Added new building block ${created.blockCode} (${created.name})`);
-  };
-
-  const handleDefineAnnualCharge = (chargeData: Partial<AnnualCharge>) => {
-    const created: AnnualCharge = {
-      id: `chg-${Date.now()}`,
-      year: chargeData.year || 2027,
-      amount: chargeData.amount || 1500,
-      currency: 'EUR',
-      title: chargeData.title || `${chargeData.year} General Maintenance Dues`,
-      description: chargeData.description || 'Approved annual budget dues.',
-      createdAt: new Date().toISOString().split('T')[0],
-      createdBy: currentRole,
-      status: 'draft'
-    };
-    setAnnualCharges(prev => [created, ...prev]);
-    addAuditLog('DEFINE_ANNUAL_CHARGE', 'annual_charge', created.id, `Defined annual charge for Year ${created.year}: €${created.amount}`);
-  };
-
-  const handleSendToAll = (_chargeId: string) => {
-    addAuditLog('SEND_TO_ALL_INVOICES', 'annual_charge', _chargeId, 'Invoice issuance is now handled by BillingView against apartments in Supabase.');
-  };
-
-  const handleRecordPayment = (paymentData: Partial<Payment>) => {
-    if (!paymentData.residentId || !paymentData.amount) return;
-    const createdPayment: Payment = {
-      id: `pay-${Date.now()}`,
-      invoiceId: paymentData.invoiceId || 'inv-batch',
-      residentId: paymentData.residentId,
-      unitNumber: paymentData.unitNumber || '',
-      amount: Number(paymentData.amount),
-      currency: 'EUR',
-      paymentDate: paymentData.paymentDate || new Date().toISOString().split('T')[0],
-      method: paymentData.method || 'bank_transfer',
-      referenceNo: paymentData.referenceNo || 'TXN-' + Math.floor(100000 + Math.random() * 900000),
-      verifiedBy: currentRole,
-      receiptNumber: `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      payerName: paymentData.payerName || 'Owner'
-    };
-    setPayments(prev => [createdPayment, ...prev]);
-    addAuditLog('RECORD_PAYMENT', 'payment', createdPayment.id, `Recorded payment of €${createdPayment.amount}`);
-  };
-
-  const handleAddTask = (task: TaskItem) => {
-    setTasks(prev => [task, ...prev]);
-    addAuditLog('CREATE_TASK', 'task', task.id, `Created task: ${task.title}`);
-  };
-
-  const handleUpdateTask = (updated: TaskItem) => {
-    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-    addAuditLog('UPDATE_TASK_WORKFLOW', 'task', updated.id, `Updated task ${updated.title}`);
-  };
-
-  const handleUploadDocument = (doc: DocumentItem) => {
-    setDocuments(prev => [doc, ...prev]);
-    addAuditLog('UPLOAD_DOCUMENT', 'document', doc.id, `Uploaded document: ${doc.title}`);
-  };
-
-  const handleSoftDeleteDocument = (docId: string) => {
-    setDocuments(prev => prev.map(d => d.id === docId ? {
-      ...d,
-      isSoftDeleted: true,
-      deletedAt: new Date().toISOString().split('T')[0],
-      deletedByRole: currentRole,
-      deletedByName: currentRole.replace('_', ' ').toUpperCase()
-    } : d));
-    addAuditLog('SOFT_DELETE_DOCUMENT', 'document', docId, 'Marked document for deletion');
-  };
-
-  const handleRestoreDocument = (docId: string) => {
-    setDocuments(prev => prev.map(d => d.id === docId ? {
-      ...d,
-      isSoftDeleted: false,
-      deletedAt: undefined,
-      deletedByRole: undefined,
-      deletedByName: undefined
-    } : d));
-    addAuditLog('RESTORE_DOCUMENT', 'document', docId, 'Restored document');
-  };
-
-  const handlePermanentDeleteDocument = (docId: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== docId));
-    addAuditLog('PERMANENT_PURGE_DOCUMENT', 'document', docId, 'Permanently purged document');
-  };
-
-  const pendingAuditsCount = tasks.filter(t => t.financialAudit.status === 'pending').length;
+  const addAuditLog = (action: string, targetType: string, targetId: string, details: string) => setAuditLogs(prev => [{ id: `log-${Date.now()}`, timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19), userRole: currentRole, userName: currentRole.replace('_', ' ').toUpperCase(), action, targetType, targetId, details }, ...prev]);
+  const handleCreateComplex = async (data: { ComplexName: string; Address: string }) => { const created = await databaseApi.createComplex(data); setComplexes(prev => [created, ...prev]); setSelectedComplexId(created.ComplexID); addAuditLog('CREATE_COMPLEX', 'complex', String(created.ComplexID), `Created complex ${created.ComplexName}`); };
+  const handleUpdateComplexDb = async (id: number, data: { ComplexName: string; Address: string }) => { const updated = await databaseApi.updateComplex(id, data); setComplexes(prev => prev.map(item => item.ComplexID === id ? updated : item)); addAuditLog('UPDATE_COMPLEX', 'complex', String(id), `Updated complex ${updated.ComplexName}`); };
+  const handleDeleteComplex = async (id: number) => { await databaseApi.deleteComplex(id); setComplexes(prev => prev.filter(item => item.ComplexID !== id)); setDbBuildings(prev => prev.filter(item => item.ComplexID !== id)); setSelectedComplexId(current => current === id ? null : current); addAuditLog('DELETE_COMPLEX', 'complex', String(id), `Deleted complex ${id}`); };
+  const handleCreateBuilding = async (data: { ComplexID: number; BuildingName: string }) => { const created = await databaseApi.createBuilding(data); setDbBuildings(prev => [created, ...prev]); addAuditLog('CREATE_BUILDING', 'building', String(created.BuildingID), `Created building ${created.BuildingName}`); };
+  const handleUpdateBuildingDb = async (id: number, data: { ComplexID: number; BuildingName: string }) => { const updated = await databaseApi.updateBuilding(id, data); setDbBuildings(prev => prev.map(item => item.BuildingID === id ? updated : item)); addAuditLog('UPDATE_BUILDING', 'building', String(id), `Updated building ${updated.BuildingName}`); };
+  const handleDeleteBuilding = async (id: number) => { await databaseApi.deleteBuilding(id); setDbBuildings(prev => prev.filter(item => item.BuildingID !== id)); addAuditLog('DELETE_BUILDING', 'building', String(id), `Deleted building ${id}`); };
+  const handleUpdateComplex = (updated: ComplexInfo) => { setComplex(updated); addAuditLog('UPDATE_COMPLEX_INFO', 'complex', updated.id, `Updated legal & banking registry for ${updated.name}`); };
+  const handleUpdateBuilding = (updated: Building) => { setBuildings(prev => prev.map(b => b.id === updated.id ? updated : b)); addAuditLog('UPDATE_BUILDING', 'building', updated.id, `Updated specifications for ${updated.blockCode}`); };
+  const handleAddBuilding = (created: Building) => { setBuildings(prev => [created, ...prev]); addAuditLog('CREATE_BUILDING', 'building', created.id, `Added new building block ${created.blockCode} (${created.name})`); };
+  const handleDefineAnnualCharge = (chargeData: Partial<AnnualCharge>) => { const created: AnnualCharge = { id:`chg-${Date.now()}`, year:chargeData.year||2027, amount:chargeData.amount||1500, currency:'EUR', title:chargeData.title||`${chargeData.year} General Maintenance Dues`, description:chargeData.description||'Approved annual budget dues.', createdAt:new Date().toISOString().split('T')[0], createdBy:currentRole, status:'draft' }; setAnnualCharges(prev=>[created,...prev]); addAuditLog('DEFINE_ANNUAL_CHARGE','annual_charge',created.id,`Defined annual charge for Year ${created.year}: €${created.amount}`); };
+  const handleSendToAll = (_chargeId: string) => addAuditLog('SEND_TO_ALL_INVOICES','annual_charge',_chargeId,'Invoice issuance is now handled by BillingView against apartments in Supabase.');
+  const handleRecordPayment = (paymentData: Partial<Payment>) => { if(!paymentData.residentId||!paymentData.amount)return; const createdPayment:Payment={id:`pay-${Date.now()}`,invoiceId:paymentData.invoiceId||'inv-batch',residentId:paymentData.residentId,unitNumber:paymentData.unitNumber||'',amount:Number(paymentData.amount),currency:'EUR',paymentDate:paymentData.paymentDate||new Date().toISOString().split('T')[0],method:paymentData.method||'bank_transfer',referenceNo:paymentData.referenceNo||'TXN-'+Math.floor(100000+Math.random()*900000),verifiedBy:currentRole,receiptNumber:`REC-${new Date().getFullYear()}-${Math.floor(1000+Math.random()*9000)}`,payerName:paymentData.payerName||'Owner'}; setPayments(prev=>[createdPayment,...prev]); addAuditLog('RECORD_PAYMENT','payment',createdPayment.id,`Recorded payment of €${createdPayment.amount}`); };
+  const handleAddTask = (task: TaskItem) => { setTasks(prev=>[task,...prev]); addAuditLog('CREATE_TASK','task',task.id,`Created task: ${task.title}`); };
+  const handleUpdateTask = (updated: TaskItem) => { setTasks(prev=>prev.map(t=>t.id===updated.id?updated:t)); addAuditLog('UPDATE_TASK_WORKFLOW','task',updated.id,`Updated task ${updated.title}`); };
+  const handleUploadDocument = (doc: DocumentItem) => { setDocuments(prev=>[doc,...prev]); addAuditLog('UPLOAD_DOCUMENT','document',doc.id,`Uploaded document: ${doc.title}`); };
+  const handleSoftDeleteDocument = (docId:string) => { setDocuments(prev=>prev.map(d=>d.id===docId?{...d,isSoftDeleted:true,deletedAt:new Date().toISOString().split('T')[0],deletedByRole:currentRole,deletedByName:currentRole.replace('_',' ').toUpperCase()}:d)); addAuditLog('SOFT_DELETE_DOCUMENT','document',docId,'Marked document for deletion'); };
+  const handleRestoreDocument = (docId:string) => { setDocuments(prev=>prev.map(d=>d.id===docId?{...d,isSoftDeleted:false,deletedAt:undefined,deletedByRole:undefined,deletedByName:undefined}:d)); addAuditLog('RESTORE_DOCUMENT','document',docId,'Restored document'); };
+  const handlePermanentDeleteDocument = (docId:string) => { setDocuments(prev=>prev.filter(d=>d.id!==docId)); addAuditLog('PERMANENT_PURGE_DOCUMENT','document',docId,'Permanently purged document'); };
+  const pendingAuditsCount = tasks.filter(t=>t.financialAudit.status==='pending').length;
 
   return <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col antialiased selection:bg-teal-600 selection:text-white">
     <Header complex={complex} currentRole={currentRole} currentLang={currentLang} onLangChange={handleLanguageChange} pendingAuditsCount={pendingAuditsCount} />
-    <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
-      <Sidebar currentTab={currentTab} onTabSelect={setCurrentTab} currentRole={currentRole} currentLang={currentLang} />
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {currentTab === 'start_page' && <StartPage complexes={complexes} buildings={dbBuildings} currentLang={currentLang} loading={dbLoading} onOpenComplexes={() => setCurrentTab('complex')} onOpenBuildings={() => setCurrentTab('buildings')} />}
-        {currentTab === 'complex' && <ComplexView complexes={complexes} selectedComplexId={selectedComplexId} onSelectComplex={setSelectedComplexId} onCreateComplex={handleCreateComplex} onUpdateComplex={handleUpdateComplexDb} onDeleteComplex={handleDeleteComplex} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} buildings={dbBuildings} onNavigateToBuildings={(complexId) => { if (complexId !== undefined) setSelectedComplexFilter(complexId); setCurrentTab('buildings'); }} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'buildings' && <BuildingsView buildings={dbBuildings} complexes={complexes} selectedComplexFilter={selectedComplexFilter} onSelectComplexFilter={setSelectedComplexFilter} onCreateBuilding={handleCreateBuilding} onUpdateBuilding={handleUpdateBuildingDb} onDeleteBuilding={handleDeleteBuilding} onRefresh={() => void refreshDatabaseData()} loading={dbLoading} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'residents' && <ResidentsView currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'billing' && <BillingView annualCharges={annualCharges} invoices={invoices} payments={payments} onDefineAnnualCharge={handleDefineAnnualCharge} onSendToAll={handleSendToAll} onOpenInvoiceModal={inv => setActiveInvoiceModal(inv)} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'tasks' && <TasksView tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'documents' && <DocumentsView documents={documents} onUploadDocument={handleUploadDocument} onSoftDeleteDocument={handleSoftDeleteDocument} onRestoreDocument={handleRestoreDocument} onPermanentDeleteDocument={handlePermanentDeleteDocument} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'administration' && <AdministrationView auditLogs={auditLogs} currentRole={currentRole} currentLang={currentLang} />}
-        {currentTab === 'guest_overview' && <GuestLandingView complex={complex} currentLang={currentLang} onExploreClick={() => setCurrentTab('complex')} />}
-      </main>
-    </div>
-    {activeInvoiceModal && <InvoiceModal invoice={activeInvoiceModal} complex={complex} onClose={() => setActiveInvoiceModal(null)} currentLang={currentLang} />}
+    {operationError && <div role="alert" className="fixed top-20 right-5 z-50 max-w-md rounded-xl border border-red-200 bg-white px-4 py-3 shadow-lg text-sm text-red-700"><div className="font-semibold">{operationError}</div><button onClick={()=>setOperationError(null)} className="mt-2 text-xs underline">OK</button></div>}
+    <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row"><Sidebar currentTab={currentTab} onTabSelect={setCurrentTab} currentRole={currentRole} currentLang={currentLang} /><main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+      {currentTab==='start_page'&&<StartPage complexes={complexes} buildings={dbBuildings} currentLang={currentLang} loading={dbLoading} onOpenComplexes={()=>setCurrentTab('complex')} onOpenBuildings={()=>setCurrentTab('buildings')} />}
+      {currentTab==='complex'&&<ComplexView complexes={complexes} selectedComplexId={selectedComplexId} onSelectComplex={setSelectedComplexId} onCreateComplex={handleCreateComplex} onUpdateComplex={handleUpdateComplexDb} onDeleteComplex={handleDeleteComplex} onRefresh={()=>void refreshDatabaseData()} loading={dbLoading} buildings={dbBuildings} onNavigateToBuildings={(complexId)=>{if(complexId!==undefined)setSelectedComplexFilter(complexId);setCurrentTab('buildings');}} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='buildings'&&<BuildingsView buildings={dbBuildings} complexes={complexes} selectedComplexFilter={selectedComplexFilter} onSelectComplexFilter={setSelectedComplexFilter} onCreateBuilding={handleCreateBuilding} onUpdateBuilding={handleUpdateBuildingDb} onDeleteBuilding={handleDeleteBuilding} onRefresh={()=>void refreshDatabaseData()} loading={dbLoading} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='residents'&&<ResidentsView currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='billing'&&<BillingView annualCharges={annualCharges} invoices={invoices} payments={payments} onDefineAnnualCharge={handleDefineAnnualCharge} onSendToAll={handleSendToAll} onOpenInvoiceModal={inv=>setActiveInvoiceModal(inv)} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='tasks'&&<TasksView tasks={tasks} onAddTask={handleAddTask} onUpdateTask={handleUpdateTask} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='documents'&&<DocumentsView documents={documents} onUploadDocument={handleUploadDocument} onSoftDeleteDocument={handleSoftDeleteDocument} onRestoreDocument={handleRestoreDocument} onPermanentDeleteDocument={handlePermanentDeleteDocument} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='administration'&&<AdministrationView auditLogs={auditLogs} currentRole={currentRole} currentLang={currentLang} />}
+      {currentTab==='errors'&&<ErrorLogView currentLang={currentLang} />}
+      {currentTab==='guest_overview'&&<GuestLandingView complex={complex} currentLang={currentLang} onExploreClick={()=>setCurrentTab('complex')} />}
+    </main></div>
+    {activeInvoiceModal&&<InvoiceModal invoice={activeInvoiceModal} complex={complex} onClose={()=>setActiveInvoiceModal(null)} currentLang={currentLang} />}
   </div>;
 };
