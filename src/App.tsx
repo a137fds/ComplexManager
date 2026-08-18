@@ -15,6 +15,17 @@ import { AdministrationView } from './components/AdministrationView';
 import { GuestLandingView } from './components/GuestLandingView';
 import { InvoiceModal } from './components/InvoiceModal';
 import { useAuth } from './auth/AuthContext';
+import { supabase } from './lib/supabase';
+
+const languagePreferencePrompt: Record<Language, string> = {
+  en: 'Use this language as your default language for the website and documents?',
+  ru: 'Использовать этот язык как язык по умолчанию для сайта и документов?',
+  tr: 'Bu dil web sitesi ve belgeler için varsayılan dil olarak kullanılsın mı?',
+  fr: 'Utiliser cette langue comme langue par défaut pour le site et les documents ?',
+  da: 'Skal dette være standardsproget for webstedet og dokumenter?',
+  sv: 'Ska detta vara standardspråk för webbplatsen och dokument?',
+  pl: 'Ustawić ten język jako domyślny dla strony i dokumentów?',
+};
 
 export const App: React.FC = () => {
   const { profile } = useAuth();
@@ -36,6 +47,19 @@ export const App: React.FC = () => {
   const [currentLang, setCurrentLang] = useState<Language>('en');
   const [currentTab, setCurrentTab] = useState<TabType>('start_page');
   const [activeInvoiceModal, setActiveInvoiceModal] = useState<Invoice | null>(null);
+
+  useEffect(() => {
+    if (profile?.default_language) setCurrentLang(profile.default_language as Language);
+  }, [profile?.default_language]);
+
+  const handleLanguageChange = async (lang: Language) => {
+    setCurrentLang(lang);
+    if (!profile?.id || profile.default_language === lang) return;
+    const shouldPersist = window.confirm(languagePreferencePrompt[lang]);
+    if (!shouldPersist) return;
+    const { error } = await supabase.from('user_profiles').update({ default_language: lang }).eq('id', profile.id);
+    if (error) console.error('Failed to save default language:', error);
+  };
 
   const refreshDatabaseData = async () => {
     setDbLoading(true);
@@ -76,7 +100,7 @@ export const App: React.FC = () => {
 
   const pendingAuditsCount = tasks.filter(t => t.financialAudit.status === 'pending').length;
   return <div className="min-h-screen bg-slate-100/70 text-slate-800 font-sans flex flex-col antialiased selection:bg-teal-600 selection:text-white">
-    <Header complex={complex} currentRole={currentRole} currentLang={currentLang} onLangChange={setCurrentLang} pendingAuditsCount={pendingAuditsCount} />
+    <Header complex={complex} currentRole={currentRole} currentLang={currentLang} onLangChange={handleLanguageChange} pendingAuditsCount={pendingAuditsCount} />
     <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
       <Sidebar currentTab={currentTab} onTabSelect={setCurrentTab} currentRole={currentRole} currentLang={currentLang} />
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
