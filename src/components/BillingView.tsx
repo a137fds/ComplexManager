@@ -22,14 +22,14 @@ export const BillingView: React.FC<BillingViewProps> = ({ annualCharges, payment
   const loadBilling = async () => {
     const [{ data: apartments }, { data: rows, error }] = await Promise.all([
       supabase.from('apartments').select('id'),
-      supabase.from('invoices').select('id,invoice_number,apartment_id,billing_year,amount,currency,status,issue_date,due_date,title,description,paid_amount,payer_names').order('created_at', { ascending: false })
+      supabase.from('invoices').select('id,invoice_number,apartment_id,billing_year,amount,currency,status,issue_date,due_date,title,description,paid_amount,payer_names,"ChangeDate"').order('ChangeDate', { ascending: false })
     ]);
     setApartmentCount(apartments?.length || 0);
     if (error) { console.error('Failed to load invoices:', error); return; }
     setInvoices((rows || []).map((r: any) => ({
       id: String(r.id), invoiceNumber: r.invoice_number || `INV-${r.billing_year}-${r.id}`, apartmentId: r.apartment_id ?? undefined,
       payerNames: r.payer_names || [], unitNumber: '', blockCode: '', year: r.billing_year, title: r.title || '', amount: Number(r.amount), currency: r.currency || 'EUR',
-      issueDate: r.issue_date || String(r.created_at || '').slice(0,10), dueDate: r.due_date || '', status: r.status || 'unpaid', paidAmount: Number(r.paid_amount || 0), pdfGenerated: Boolean(r.document_path), description: r.description
+      issueDate: r.issue_date || String(r.ChangeDate || '').slice(0,10), dueDate: r.due_date || '', status: r.status || 'unpaid', paidAmount: Number(r.paid_amount || 0), pdfGenerated: Boolean(r.document_path), description: r.description
     })));
   };
   useEffect(() => { void loadBilling(); }, []);
