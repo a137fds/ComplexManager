@@ -228,6 +228,7 @@ The intended roles are:
 - **Implemented** — New requirements are intended to be formulated and approved before implementation.
 - **Approved** — Implementation audit is performed by comparing this specification against the actual repository and Supabase database.
 - **Implemented** — This revision is the result of the first implementation audit.
+- **Approved** — SPEC.md and SPEC.ru.md must be maintained together, in English and Russian respectively. Any new requirement, status change, or section added to one file must be added to the other in the same update, with equivalent content.
 
 ## 10. Implementation audit — 2026-08-18
 
@@ -288,6 +289,9 @@ The audit found that the following requirements are not yet fully implemented:
 - **Proposed** — Exact invoice-recipient persistence model.
 - **Proposed** — Exact PDF generation/storage implementation.
 - **Proposed** — Legal validation of issuing/sending invoices in different languages. The product requirement assumes multilingual invoices are permitted; legal confirmation remains an external business/legal task.
+- **Proposed** — Source and refresh frequency of exchange rate data for the currency display feature (Section 13): fixed API, Turkish Central Bank feed, or manual admin entry — not yet decided.
+- **Proposed** — Legal/accounting correctness of displaying official Aidat amounts in a currency other than TRY, even as a reference conversion — requires the same kind of legal validation already noted for multilingual invoices above.
+- **Proposed** — Default display currency for new users and Guest role (TRY by default has been suggested but not approved).
 
 ## 12. Next development rule
 
@@ -302,3 +306,54 @@ When a new feature is requested:
 7. After repository/database review and appropriate user testing it becomes `Verified`.
 
 No requirement should be silently skipped or considered complete merely because adjacent functionality exists.
+
+## 13. Currency selection and display (multi-currency support)
+
+The application currently displays all monetary values hard-coded in EUR, with no
+way for the user to change the displayed currency. This section defines a proposed
+feature analogous to the existing language selector (see Section 4.2), but applied
+to currency instead of language.
+
+### 13.1 Currency selector
+
+- **Proposed** — A currency selector (TRY / USD / EUR) must exist in the header,
+  positioned alongside the existing language selector.
+- **Proposed** — The selected display currency must be persisted per user as
+  `user_profiles.default_currency`, analogous to `user_profiles.default_language`.
+- **Proposed** — On profile load, the UI must initialize the display currency from
+  `profile.default_currency`, with a sensible default (e.g. TRY, since the complex
+  is located in Türkiye) when unset.
+- **Proposed** — Selecting a different display currency should offer to save it as
+  the user's default, mirroring the existing language-preference-save behavior.
+
+### 13.2 Scope of currency conversion
+
+- **Proposed** — The display currency must affect only UI-level monetary summaries
+  and non-official views (dashboards, billing summaries, task cost estimates,
+  apartment/invoice list views), not the underlying stored `currency` field of
+  financial records.
+- **Proposed** — Official invoice/receipt documents (see Section 6, `InvoiceModal`)
+  must continue to display the amount in the currency the invoice was actually
+  issued in, and must not silently change currency on redisplay. This follows the
+  existing requirement that generated invoices are historical records that must not
+  change (Section 6.2).
+- **Proposed** — Official invoice/receipt documents may optionally display an
+  additional, clearly labeled reference conversion (e.g. "≈ 1,400 EUR at rate on
+  <date>") without replacing or altering the original issued amount.
+
+### 13.3 Exchange rate data
+
+- **Proposed** — Exchange rate data (TRY, USD, EUR) must be stored and refreshed
+  through a dedicated backend mechanism (e.g. a scheduled Edge Function updating a
+  Supabase table), not fetched ad hoc from the browser on every page view.
+- **Proposed** — Every currency-converted UI amount must be clearly distinguishable
+  from an amount in its original stored currency (e.g. an "≈" prefix or a
+  converted-value label).
+
+### 13.4 Data model impact
+
+- **Proposed** — `user_profiles.default_currency` must be added to the database,
+  independent of and without modifying the existing `currency` field already
+  present on `Invoice`, `Payment`, and `AnnualCharge` records.
+- **Proposed** — No existing stored `currency` value on historical financial
+  records may be changed or reinterpreted by this feature.
